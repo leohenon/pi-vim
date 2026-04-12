@@ -469,8 +469,15 @@ class VimModeEditor extends CustomEditor {
 		}
 	}
 
+	private isInterruptKey(data: string): boolean {
+		return (this as unknown as { keybindings: { matches(data: string, action: string): boolean } }).keybindings.matches(
+			data,
+			"app.interrupt",
+		) || matchesKey(data, "escape");
+	}
+
 	private handlePending(data: string): boolean {
-		if (matchesKey(data, "escape")) {
+		if (this.isInterruptKey(data)) {
 			this.clearPending();
 			this.tui.requestRender();
 			return true;
@@ -520,15 +527,14 @@ class VimModeEditor extends CustomEditor {
 	}
 
 	handleInput(data: string): void {
-		if (matchesKey(data, "escape")) {
+		if (this.isInterruptKey(data)) {
 			if (this.mode === "insert") {
 				if (this.isShowingAutocomplete()) {
 					super.handleInput(data);
-				} else {
-					this.clearPending();
-					this.normalizeCursorForNormalMode();
-					this.setMode("normal");
 				}
+				this.clearPending();
+				this.normalizeCursorForNormalMode();
+				this.setMode("normal");
 			} else if (this.pending) {
 				this.clearPending();
 				this.tui.requestRender();
