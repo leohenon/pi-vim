@@ -246,14 +246,29 @@ class VimModeEditor extends CustomEditor {
 		tui: CustomEditorArgs[0],
 		theme: CustomEditorArgs[1],
 		keybindings: CustomEditorArgs[2],
-		private onModeChange: (mode: Mode) => void,
+		private onStatusChange: (mode: Mode, pending: string) => void,
 	) {
 		super(tui, theme, keybindings);
-		this.onModeChange(this.mode);
+		this.emitStatus();
 	}
 
 	private get editor(): InternalEditor {
 		return this as unknown as InternalEditor;
+	}
+
+	private getPendingDisplay(): string {
+		const count = this.count;
+		if (this.pendingFindOp) return `${count}${this.pendingFindOp.op}${this.pendingFindOp.motion}`;
+		if (this.pendingTextObject && this.pending) return `${count}${this.pending}${this.pendingTextObject}`;
+		if (this.pending) return `${count}${this.pending}`;
+		if (this.pendingG) return `${count}g`;
+		if (count) return count;
+		return "";
+	}
+
+	private emitStatus(): void {
+		this.onStatusChange(this.mode, this.getPendingDisplay());
+		this.tui.requestRender();
 	}
 
 	private clearPending(): void {
@@ -262,6 +277,7 @@ class VimModeEditor extends CustomEditor {
 		this.pendingFindOp = undefined;
 		this.pendingG = false;
 		this.count = "";
+		this.emitStatus();
 	}
 
 	private getVisualRange(): { start: number; end: number; linewise: boolean } | undefined {
@@ -398,7 +414,7 @@ class VimModeEditor extends CustomEditor {
 		if (this.mode === mode) return;
 		this.mode = mode;
 		if (mode !== "visual" && mode !== "visual-line") this.visualAnchor = undefined;
-		this.onModeChange(mode);
+		this.emitStatus();
 		this.tui.requestRender();
 	}
 
@@ -1004,10 +1020,12 @@ class VimModeEditor extends CustomEditor {
 			case "c": {
 				if (data === "i" || data === "a") {
 					this.pendingTextObject = data;
+					this.emitStatus();
 					return true;
 				}
 				if (data === "f" || data === "F" || data === "t" || data === "T") {
 					this.pendingFindOp = { op: this.pending, motion: data, count: this.takeCount(1) };
+					this.emitStatus();
 					return true;
 				}
 				if (data === this.pending) {
@@ -1161,6 +1179,7 @@ class VimModeEditor extends CustomEditor {
 
 		if ((this.pending === "d" || this.pending === "c" || this.pending === "y") && (data === "i" || data === "a")) {
 			this.pendingTextObject = data;
+			this.emitStatus();
 			return;
 		}
 
@@ -1180,14 +1199,17 @@ class VimModeEditor extends CustomEditor {
 			if (data === "g") {
 				const count = this.takeCount(1);
 				this.pendingG = false;
+				this.emitStatus();
 				this.moveToLine(count);
 				return;
 			}
 			this.pendingG = false;
+			this.emitStatus();
 		}
 
 		if (data >= "0" && data <= "9" && (data !== "0" || this.count.length > 0)) {
 			this.count += data;
+			this.emitStatus();
 			return;
 		}
 
@@ -1262,6 +1284,7 @@ class VimModeEditor extends CustomEditor {
 				return;
 			case "g":
 				this.pendingG = true;
+				this.emitStatus();
 				return;
 			case "G":
 				this.moveToLine(this.takeCount(this.getLines().length));
@@ -1316,12 +1339,15 @@ class VimModeEditor extends CustomEditor {
 				return;
 			case "d":
 				this.pending = "d";
+				this.emitStatus();
 				return;
 			case "c":
 				this.pending = "c";
+				this.emitStatus();
 				return;
 			case "y":
 				this.pending = "y";
+				this.emitStatus();
 				return;
 			case "i":
 				if (this.pending === "d" || this.pending === "c" || this.pending === "y") {
@@ -1339,15 +1365,19 @@ class VimModeEditor extends CustomEditor {
 				return;
 			case "f":
 				this.pending = "f";
+				this.emitStatus();
 				return;
 			case "F":
 				this.pending = "F";
+				this.emitStatus();
 				return;
 			case "t":
 				this.pending = "t";
+				this.emitStatus();
 				return;
 			case "T":
 				this.pending = "T";
+				this.emitStatus();
 				return;
 		}
 
@@ -1358,10 +1388,12 @@ class VimModeEditor extends CustomEditor {
 
 export default function (pi: ExtensionAPI) {
 	let mode: Mode = "insert";
+	let pendingStatus = "";
 	let enabled = true;
 
 	const applyVimMode = (ctx: ExtensionContext): void => {
 		mode = "insert";
+		pendingStatus = "";
 
 		if (!enabled) {
 			ctx.ui.setFooter(undefined);
@@ -1449,7 +1481,7 @@ export default function (pi: ExtensionAPI) {
 
 					const modelName = ctx.model?.id || "no-model";
 					const thinkingLevel = pi.getThinkingLevel();
-					let rightSide =
+					let modelRightSide =
 						ctx.model?.reasoning && thinkingLevel !== "off"
 							? `${modelName} • ${thinkingLevel}`
 							: ctx.model?.reasoning
@@ -1457,31 +1489,33 @@ export default function (pi: ExtensionAPI) {
 								: modelName;
 
 					if (footerData.getAvailableProviderCount() > 1 && ctx.model) {
-						const withProvider = `(${ctx.model.provider}) ${rightSide}`;
+						const withProvider = `(${ctx.model.provider}) ${modelRightSide}`;
 						if (statsLeftWidth + 2 + visibleWidth(withProvider) <= width) {
-							rightSide = withProvider;
+							modelRightSide = withProvider;
 						}
 					}
-
-					const rightSideWidth = visibleWidth(rightSide);
-					let statsLine: string;
-					if (statsLeftWidth + 2 + rightSideWidth <= width) {
-						const padding = " ".repeat(width - statsLeftWidth - rightSideWidth);
-						statsLine = statsLeft + padding + rightSide;
-					} else {
-						const availableForRight = width - statsLeftWidth - 2;
-						if (availableForRight > 0) {
-							const truncatedRight = truncateToWidth(rightSide, availableForRight, "");
-							const padding = " ".repeat(Math.max(0, width - statsLeftWidth - visibleWidth(truncatedRight)));
-							statsLine = statsLeft + padding + truncatedRight;
-						} else {
-							statsLine = statsLeft;
+					const pendingPrefix = pendingStatus ? `${pendingStatus}..` : "";
+					const modelWidth = visibleWidth(modelRightSide);
+					const minGap = statsLeftWidth > 0 ? 2 : 0;
+					const modelStart = Math.max(statsLeftWidth + minGap, width - modelWidth);
+					const beforeModelWidth = Math.max(0, modelStart - statsLeftWidth);
+					let beforeModel = " ".repeat(beforeModelWidth);
+					if (pendingPrefix) {
+						const pendingWithSpace = `${pendingPrefix} `;
+						const pendingWidth = visibleWidth(pendingWithSpace);
+						if (pendingWidth <= beforeModelWidth) {
+							beforeModel = `${" ".repeat(beforeModelWidth - pendingWidth)}${pendingWithSpace}`;
 						}
 					}
+					const statsLine = truncateToWidth(`${statsLeft}${beforeModel}${modelRightSide}`, width, "");
 
 					const dimStatsLeft = theme.fg("dim", statsLeft);
-					const dimRemainder = theme.fg("dim", statsLine.slice(statsLeft.length));
-					const lines = [pwdLine, dimStatsLeft + dimRemainder];
+					const middle = statsLine.slice(statsLeft.length, statsLeft.length + beforeModel.length);
+					const right = statsLine.slice(statsLeft.length + beforeModel.length);
+					const coloredMiddle = pendingPrefix && middle.includes(`${pendingPrefix} `)
+						? theme.fg("dim", middle.slice(0, middle.indexOf(`${pendingPrefix} `))) + theme.fg("muted", `${pendingPrefix} `)
+						: theme.fg("dim", middle);
+					const lines = [pwdLine, dimStatsLeft + coloredMiddle + theme.fg("dim", right)];
 
 					const extensionStatuses = footerData.getExtensionStatuses();
 					if (extensionStatuses.size > 0) {
@@ -1499,8 +1533,9 @@ export default function (pi: ExtensionAPI) {
 
 		ctx.ui.setEditorComponent(
 			(tui, theme, keybindings) =>
-				new VimModeEditor(tui, theme, keybindings, (nextMode) => {
+				new VimModeEditor(tui, theme, keybindings, (nextMode, nextPending) => {
 					mode = nextMode;
+					pendingStatus = nextPending;
 				}),
 		);
 	};
