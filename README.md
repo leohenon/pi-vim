@@ -39,9 +39,9 @@ Toggle with:
 - `o`, `O`
 - `x`, `s`, `r`, `D`, `C`, `J`, `S`
 - counts for `x`, `r`, `p`, `P`, motions, undo, redo
-- `dd`, `dw`, `de`, `db`, `dW`, `dE`, `dB`, `d{count}j`, `d{count}k`
-- `cc`, `cw`, `ce`, `cb`, `cW`, `cE`, `cB`
-- `yy`, `Y`, `yw`, `ye`, `yb`, `yW`, `yE`, `yB`, `y{count}j`, `y{count}k`
+- `dd`, `dw`, `de`, `db`, `dW`, `dE`, `dB`, `d_`, `dG`, `d{count}j`, `d{count}k`
+- `cc`, `cw`, `ce`, `cb`, `cW`, `cE`, `cB`, `c_`
+- `yy`, `Y`, `yw`, `ye`, `yb`, `yW`, `yE`, `yB`, `y_`, `yG`, `y{count}j`, `y{count}k`
 - `yy`, `Y`, `p`, `P`
 - `f`, `F`, `t`, `T`, `;`, `,`
 - `u` / `Ctrl-_` → undo

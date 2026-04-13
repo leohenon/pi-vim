@@ -801,6 +801,24 @@ class VimModeEditor extends CustomEditor {
 				if (data === "$") return this.applyPendingOperator(lineEnd(this.getCurrentText(), this.getCurrentOffset()));
 				if (data === "0") return this.applyPendingOperator(lineStart(this.getCurrentText(), this.getCurrentOffset()));
 				if (data === "^") return this.applyPendingOperator(firstNonWhitespace(this.getCurrentText(), this.getCurrentOffset()));
+				if (data === "_") {
+					const count = this.takeCount(1);
+					if (this.pending === "y") this.yankLine(count);
+					else if (this.pending === "d") this.deleteLine(count);
+					else this.substituteLine(count);
+					return true;
+				}
+				if (data === "G") {
+					const offset = this.getCurrentOffset();
+					const start = lineStart(this.getCurrentText(), offset);
+					const end = this.getCurrentText().length;
+					this.clearPending();
+					this.writeRegister(this.getCurrentText().slice(start, end));
+					if (this.pending === "y") return true;
+					this.edit(() => ({ text: replaceRange(this.getCurrentText(), start, end), cursorOffset: start }));
+					if (this.pending === "c") this.setMode("insert");
+					return true;
+				}
 				if (data === "j") {
 					const count = this.takeCount(1);
 					if (this.pending === "y") this.yankLine(count + 1);
