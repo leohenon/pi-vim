@@ -1306,6 +1306,10 @@ class VimModeEditor extends CustomEditor {
 
 		if (this.pending && data >= "0" && data <= "9") {
 			if (this.count.length < 5) this.count += data;
+			if (this.count.length >= 5) {
+				this.clearPending();
+				return;
+			}
 			this.emitStatus();
 			return;
 		}
@@ -1347,6 +1351,10 @@ class VimModeEditor extends CustomEditor {
 
 		if (data >= "0" && data <= "9" && (data !== "0" || this.count.length > 0)) {
 			if (this.count.length < 5) this.count += data;
+			if (this.count.length >= 5) {
+				this.clearPending();
+				return;
+			}
 			this.emitStatus();
 			return;
 		}
