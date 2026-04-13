@@ -524,18 +524,28 @@ class VimModeEditor extends CustomEditor {
 		});
 	}
 
-	private deleteWord(change: boolean): void {
+	private applyRange(start: number, end: number, change = false, yank = false): void {
 		this.clearPending();
-		this.edit((text, offset) => {
-			const endOffset = nextWordStart(text, offset, false);
-			if (endOffset <= offset) return undefined;
-			this.writeRegister(text.slice(offset, endOffset));
-			return {
-				text: replaceRange(text, offset, endOffset),
-				cursorOffset: offset,
-			};
-		});
+		const from = Math.min(start, end);
+		const to = Math.max(start, end);
+		if (to <= from) return;
+		const text = this.getCurrentText();
+		this.writeRegister(text.slice(from, to));
+		if (yank) {
+			this.moveToOffset(start <= end ? from : Math.max(from, to - 1));
+			return;
+		}
+		this.edit(() => ({
+			text: replaceRange(text, from, to),
+			cursorOffset: from,
+		}));
 		if (change) this.setMode("insert");
+	}
+
+	private deleteWord(change: boolean): void {
+		const offset = this.getCurrentOffset();
+		const endOffset = nextWordStart(this.getCurrentText(), offset, false);
+		this.applyRange(offset, endOffset, change);
 	}
 
 	private deleteLine(): void {
@@ -642,8 +652,7 @@ class VimModeEditor extends CustomEditor {
 		this.findChar(this.lastFind.char, reverse ? !this.lastFind.forward : this.lastFind.forward, this.lastFind.till);
 	}
 
-	private findChar(char: string, forward: boolean, till = false): void {
-		this.lastFind = { char, forward, till };
+	private findCharTarget(char: string, forward: boolean, till = false): number | undefined {
 		const text = this.getCurrentText();
 		const offset = this.getCurrentOffset();
 		const start = lineStart(text, offset);
@@ -651,20 +660,20 @@ class VimModeEditor extends CustomEditor {
 
 		if (forward) {
 			for (let i = offset + 1; i < end; i++) {
-				if (text[i] === char) {
-					this.moveToOffset(till ? i - 1 : i);
-					return;
-				}
+				if (text[i] === char) return till ? i - 1 : i;
 			}
-			return;
+			return undefined;
 		}
 
 		for (let i = offset - 1; i >= start; i--) {
-			if (text[i] === char) {
-				this.moveToOffset(till ? i + 1 : i);
-				return;
-			}
+			if (text[i] === char) return till ? i + 1 : i;
 		}
+	}
+
+	private findChar(char: string, forward: boolean, till = false): void {
+		this.lastFind = { char, forward, till };
+		const target = this.findCharTarget(char, forward, till);
+		if (target !== undefined) this.moveToOffset(target);
 	}
 
 	private isInterruptKey(data: string): boolean {
@@ -689,6 +698,14 @@ class VimModeEditor extends CustomEditor {
 		this.restoreSnapshot(snapshot);
 	}
 
+	private applyPendingOperator(target: number, inclusive = false): boolean {
+		const offset = this.getCurrentOffset();
+		const change = this.pending === "c";
+		const yank = this.pending === "y";
+		this.applyRange(offset, inclusive ? target + 1 : target, change, yank);
+		return true;
+	}
+
 	private handlePending(data: string): boolean {
 		if (this.isInterruptKey(data)) {
 			this.clearPending();
@@ -704,33 +721,28 @@ class VimModeEditor extends CustomEditor {
 				}
 				break;
 			}
-			case "y": {
-				if (data === "y") {
-					this.yankLine();
-					return true;
-				}
-				break;
-			}
-			case "d": {
-				if (data === "d") {
-					this.deleteLine();
-					return true;
-				}
-				if (data === "w") {
-					this.deleteWord(false);
-					return true;
-				}
-				break;
-			}
+			case "y":
+			case "d":
 			case "c": {
-				if (data === "c") {
-					this.substituteLine();
+				if (data === this.pending) {
+					if (this.pending === "y") this.yankLine();
+					else if (this.pending === "d") this.deleteLine();
+					else this.substituteLine();
 					return true;
 				}
 				if (data === "w") {
-					this.deleteWord(true);
+					if (this.pending === "y") this.applyRange(this.getCurrentOffset(), nextWordStart(this.getCurrentText(), this.getCurrentOffset(), false), false, true);
+					else this.deleteWord(this.pending === "c");
 					return true;
 				}
+				if (data === "e") return this.applyPendingOperator(wordEnd(this.getCurrentText(), this.getCurrentOffset(), false), true);
+				if (data === "b") return this.applyPendingOperator(prevWordStart(this.getCurrentText(), this.getCurrentOffset(), false));
+				if (data === "W") return this.applyPendingOperator(nextWordStart(this.getCurrentText(), this.getCurrentOffset(), true));
+				if (data === "E") return this.applyPendingOperator(wordEnd(this.getCurrentText(), this.getCurrentOffset(), true), true);
+				if (data === "B") return this.applyPendingOperator(prevWordStart(this.getCurrentText(), this.getCurrentOffset(), true));
+				if (data === "$") return this.applyPendingOperator(lineEnd(this.getCurrentText(), this.getCurrentOffset()));
+				if (data === "0") return this.applyPendingOperator(lineStart(this.getCurrentText(), this.getCurrentOffset()));
+				if (data === "^") return this.applyPendingOperator(firstNonWhitespace(this.getCurrentText(), this.getCurrentOffset()));
 				break;
 			}
 			case "f":

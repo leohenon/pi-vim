@@ -34,7 +34,9 @@ Toggle with:
 - `{`, `}`
 - `o`, `O`
 - `x`, `s`, `r`, `D`, `C`, `J`, `S`
-- `dd`, `dw`, `cc`, `cw`
+- `dd`, `dw`, `de`, `db`, `dW`, `dE`, `dB`
+- `cc`, `cw`, `ce`, `cb`, `cW`, `cE`, `cB`
+- `yy`, `yw`, `ye`, `yb`, `yW`, `yE`, `yB`
 - `yy`, `Y`, `p`, `P`
 - `f`, `F`, `t`, `T`, `;`, `,`
 - `u` → undo
