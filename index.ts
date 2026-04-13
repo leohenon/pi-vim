@@ -262,10 +262,10 @@ class VimModeEditor extends CustomEditor {
 
 	private getPendingDisplay(): string {
 		const count = this.count;
-		if (this.pendingFindOp) return `${count}${this.pendingFindOp.op}${this.pendingFindOp.motion}`;
-		if (this.pendingTextObject && this.pending) return `${count}${this.pending}${this.pendingTextObject}`;
-		if (this.pending) return `${count}${this.pending}`;
-		if (this.pendingG) return `${count}g`;
+		if (this.pendingFindOp) return `${this.pendingFindOp.op}${count}${this.pendingFindOp.motion}`;
+		if (this.pendingTextObject && this.pending) return `${this.pending}${count}${this.pendingTextObject}`;
+		if (this.pending) return `${this.pending}${count}`;
+		if (this.pendingG) return `g${count}`;
 		if (count) return count;
 		return "";
 	}
