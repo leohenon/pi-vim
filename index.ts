@@ -243,6 +243,7 @@ class VimModeEditor extends CustomEditor {
 	private lastFind: LastFind;
 	private readonly redoStack: EditorSnapshot[] = [];
 	private unnamedRegister = "";
+	private unnamedRegisterType: "char" | "line" = "char";
 
 	constructor(
 		tui: CustomEditorArgs[0],
@@ -337,8 +338,9 @@ class VimModeEditor extends CustomEditor {
 		}, 120);
 	}
 
-	private writeRegister(text: string): void {
+	private writeRegister(text: string, type: "char" | "line" = "char"): void {
 		this.unnamedRegister = text;
+		this.unnamedRegisterType = type;
 		void copyToClipboard(text).catch(() => {});
 	}
 
@@ -471,7 +473,7 @@ class VimModeEditor extends CustomEditor {
 		const text = this.getCurrentText();
 		const selected = text.slice(range.start, range.end);
 		if (action === "yank") {
-			this.writeRegister(selected);
+			this.writeRegister(selected, range.linewise ? "line" : "char");
 			this.setMode("normal");
 			this.moveToOffset(range.start);
 			return;
@@ -488,7 +490,7 @@ class VimModeEditor extends CustomEditor {
 			this.setMode("normal");
 			return;
 		}
-		this.writeRegister(selected);
+		this.writeRegister(selected, range.linewise ? "line" : "char");
 		this.edit(() => ({
 			text: replaceRange(text, range.start, range.end),
 			cursorOffset: range.start,
@@ -715,7 +717,7 @@ class VimModeEditor extends CustomEditor {
 		const to = Math.max(start, end);
 		if (to <= from) return;
 		const text = this.getCurrentText();
-		this.writeRegister(text.slice(from, to));
+		this.writeRegister(text.slice(from, to), "char");
 		if (yank) {
 			this.flashSelection(from, to, false);
 			this.moveToOffset(start <= end ? from : Math.max(from, to - 1));
@@ -753,7 +755,7 @@ class VimModeEditor extends CustomEditor {
 		this.edit((text, offset) => {
 			if (text.length === 0) return undefined;
 			const { start, end } = this.lineBlockRange(count, direction);
-			this.writeRegister(text.slice(start, end));
+			this.writeRegister(text.slice(start, end), "line");
 			const nextText = replaceRange(text, start, end);
 			return {
 				text: nextText,
@@ -791,7 +793,7 @@ class VimModeEditor extends CustomEditor {
 	private yankLine(count = 1): void {
 		this.clearPending();
 		const { start, end } = this.lineBlockRange(count, 0);
-		this.writeRegister(this.getCurrentText().slice(start, end));
+		this.writeRegister(this.getCurrentText().slice(start, end), "line");
 		this.flashSelection(start, end, true);
 	}
 
@@ -799,11 +801,15 @@ class VimModeEditor extends CustomEditor {
 		this.clearPending();
 		if (!this.unnamedRegister) return;
 		const register = this.unnamedRegister.repeat(Math.max(1, count));
+		const linewise = this.unnamedRegisterType === "line";
 		this.edit((text, offset) => {
-			if (register.endsWith("\n")) {
-				const insertAt = after ? lineEnd(text, offset) + (lineEnd(text, offset) < text.length ? 1 : 0) : lineStart(text, offset);
-				const nextText = replaceRange(text, insertAt, insertAt, register);
-				return { text: nextText, cursorOffset: insertAt };
+			if (linewise) {
+				const currentLineEnd = lineEnd(text, offset);
+				const insertAt = after ? currentLineEnd + (currentLineEnd < text.length ? 1 : 0) : lineStart(text, offset);
+				const needsLeadingNewline = after && insertAt === text.length && text.length > 0 && text[text.length - 1] !== "\n";
+				const insertion = needsLeadingNewline ? `\n${register}` : register;
+				const nextText = replaceRange(text, insertAt, insertAt, insertion);
+				return { text: nextText, cursorOffset: insertAt + (needsLeadingNewline ? 1 : 0) };
 			}
 
 			const insertAt = after ? Math.min(nextGraphemeOffset(text, offset), text.length) : offset;
@@ -1085,7 +1091,7 @@ class VimModeEditor extends CustomEditor {
 					const start = lineStart(this.getCurrentText(), offset);
 					const end = this.getCurrentText().length;
 					this.clearPending();
-					this.writeRegister(this.getCurrentText().slice(start, end));
+					this.writeRegister(this.getCurrentText().slice(start, end), "line");
 					if (this.pending === "y") return true;
 					this.edit(() => ({ text: replaceRange(this.getCurrentText(), start, end), cursorOffset: start }));
 					if (this.pending === "c") this.setMode("insert");
@@ -1102,7 +1108,7 @@ class VimModeEditor extends CustomEditor {
 					const count = this.takeCount(1);
 					if (this.pending === "y") {
 						const { start, end } = this.lineBlockRange(count + 1, -1);
-						this.writeRegister(this.getCurrentText().slice(start, end));
+						this.writeRegister(this.getCurrentText().slice(start, end), "line");
 						this.clearPending();
 					} else if (this.pending === "d") this.deleteLine(count + 1, -1);
 					else this.deleteLine(count + 1, -1), this.setMode("insert");
