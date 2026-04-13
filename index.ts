@@ -236,6 +236,8 @@ class VimModeEditor extends CustomEditor {
 	private pendingTextObject?: "i" | "a";
 	private pendingFindOp?: { op: "d" | "c" | "y"; motion: "f" | "F" | "t" | "T"; count: number };
 	private visualAnchor?: number;
+	private flashRange?: { start: number; end: number; linewise: boolean };
+	private flashTimer?: ReturnType<typeof setTimeout>;
 	private count = "";
 	private pendingG = false;
 	private lastFind: LastFind;
@@ -322,6 +324,17 @@ class VimModeEditor extends CustomEditor {
 
 	private clearRedoStack(): void {
 		this.redoStack.length = 0;
+	}
+
+	private flashSelection(start: number, end: number, linewise = false): void {
+		if (this.flashTimer) clearTimeout(this.flashTimer);
+		this.flashRange = { start: Math.min(start, end), end: Math.max(start, end), linewise };
+		this.tui.requestRender();
+		this.flashTimer = setTimeout(() => {
+			this.flashRange = undefined;
+			this.flashTimer = undefined;
+			this.tui.requestRender();
+		}, 120);
 	}
 
 	private writeRegister(text: string): void {
@@ -704,6 +717,7 @@ class VimModeEditor extends CustomEditor {
 		const text = this.getCurrentText();
 		this.writeRegister(text.slice(from, to));
 		if (yank) {
+			this.flashSelection(from, to, false);
 			this.moveToOffset(start <= end ? from : Math.max(from, to - 1));
 			return;
 		}
@@ -778,6 +792,7 @@ class VimModeEditor extends CustomEditor {
 		this.clearPending();
 		const { start, end } = this.lineBlockRange(count, 0);
 		this.writeRegister(this.getCurrentText().slice(start, end));
+		this.flashSelection(start, end, true);
 	}
 
 	private put(after: boolean, count = 1): void {
@@ -875,7 +890,7 @@ class VimModeEditor extends CustomEditor {
 	}
 
 	override render(width: number): string[] {
-		const range = this.getVisualRange();
+		const range = this.getVisualRange() ?? this.flashRange;
 		if (!range) return super.render(width);
 
 		const editor = this.editor;
@@ -893,9 +908,20 @@ class VimModeEditor extends CustomEditor {
 		const rightPadding = leftPadding;
 		const text = this.getCurrentText();
 
+		let searchFrom = 0;
 		const mapped = layout.map((line) => {
 			const plain = line.text;
-			const start = text.indexOf(plain);
+			if (plain.length === 0) {
+				const start = Math.min(searchFrom, text.length);
+				if (text[start] === "\n") searchFrom = start + 1;
+				return { ...line, absStart: start, absEnd: start };
+			}
+			let start = text.indexOf(plain, searchFrom);
+			if (start === -1 && searchFrom > 0) start = text.indexOf(plain);
+			if (start !== -1) {
+				searchFrom = start + plain.length;
+				if (text[searchFrom] === "\n") searchFrom += 1;
+			}
 			return { ...line, absStart: start, absEnd: start === -1 ? -1 : start + plain.length };
 		});
 
@@ -919,16 +945,19 @@ class VimModeEditor extends CustomEditor {
 		for (const line of visibleLines) {
 			let displayText = line.text;
 			if (line.absStart !== -1) {
+				const lineRangeEnd = range.linewise ? Math.max(line.absEnd, line.absStart + line.text.length, line.absEnd + 1) : line.absEnd;
 				const overlapStart = Math.max(range.start, line.absStart);
-				const overlapEnd = Math.min(range.end, line.absEnd);
-				if (overlapEnd > overlapStart) {
+				const overlapEnd = Math.min(range.end, lineRangeEnd);
+				if (range.linewise && overlapStart <= line.absStart && overlapEnd > line.absStart) {
+					displayText = selectedBg(displayText || " ");
+				} else if (overlapEnd > overlapStart) {
 					const localStart = overlapStart - line.absStart;
 					const localEnd = overlapEnd - line.absStart;
 					displayText = `${displayText.slice(0, localStart)}${selectedBg(displayText.slice(localStart, localEnd) || " ")}${displayText.slice(localEnd)}`;
 				}
 			}
 			let lineVisibleWidth = visibleWidth(line.text);
-			if ((this.mode !== "visual" && this.mode !== "visual-line") && line.hasCursor && line.cursorPos !== undefined) {
+			if (!this.flashRange && (this.mode !== "visual" && this.mode !== "visual-line") && line.hasCursor && line.cursorPos !== undefined) {
 				const before = displayText.slice(0, line.cursorPos);
 				const after = displayText.slice(line.cursorPos);
 				if (after.length > 0) {
