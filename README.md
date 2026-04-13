@@ -132,3 +132,7 @@ pi-vim/
 
 > [!NOTE]
 > If you run into any bugs, please open an issue.
+
+## License
+
+MIT
