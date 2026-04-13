@@ -33,6 +33,7 @@ Toggle with:
 - `o`, `O`
 - `x`, `J`, `S`
 - `dd`, `dw`, `cc`, `cw`
+- `yy`, `p`, `P`
 - `f`, `F`, `t`, `T`
 - `u` → undo
 - `Ctrl-r` → redo

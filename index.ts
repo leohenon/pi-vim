@@ -1,8 +1,8 @@
-import { CustomEditor, type ExtensionAPI, type ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { copyToClipboard, CustomEditor, type ExtensionAPI, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 
 type Mode = "normal" | "insert";
-type Pending = "d" | "c" | "f" | "F" | "t" | "T" | undefined;
+type Pending = "d" | "c" | "y" | "f" | "F" | "t" | "T" | undefined;
 type Cursor = { line: number; col: number };
 type CustomEditorArgs = ConstructorParameters<typeof CustomEditor>;
 
@@ -203,6 +203,7 @@ class VimModeEditor extends CustomEditor {
 	private mode: Mode = "insert";
 	private pending: Pending;
 	private readonly redoStack: EditorSnapshot[] = [];
+	private unnamedRegister = "";
 
 	constructor(
 		tui: CustomEditorArgs[0],
@@ -243,6 +244,11 @@ class VimModeEditor extends CustomEditor {
 
 	private clearRedoStack(): void {
 		this.redoStack.length = 0;
+	}
+
+	private writeRegister(text: string): void {
+		this.unnamedRegister = text;
+		void copyToClipboard(text).catch(() => {});
 	}
 
 	private setMode(mode: Mode): void {
@@ -393,8 +399,10 @@ class VimModeEditor extends CustomEditor {
 		this.clearPending();
 		this.edit((text, offset) => {
 			if (offset >= lineEnd(text, offset)) return undefined;
+			const end = nextGraphemeOffset(text, offset);
+			this.writeRegister(text.slice(offset, end));
 			return {
-				text: replaceRange(text, offset, nextGraphemeOffset(text, offset)),
+				text: replaceRange(text, offset, end),
 				cursorOffset: offset,
 			};
 		});
@@ -405,6 +413,7 @@ class VimModeEditor extends CustomEditor {
 		this.edit((text, offset) => {
 			const endOffset = nextWordStart(text, offset, false);
 			if (endOffset <= offset) return undefined;
+			this.writeRegister(text.slice(offset, endOffset));
 			return {
 				text: replaceRange(text, offset, endOffset),
 				cursorOffset: offset,
@@ -419,6 +428,7 @@ class VimModeEditor extends CustomEditor {
 			if (text.length === 0) return undefined;
 			const start = lineStart(text, offset);
 			const end = lineEnd(text, offset);
+			this.writeRegister(text.slice(start, Math.min(end + 1, text.length)));
 
 			if (end < text.length) {
 				return {
@@ -447,6 +457,7 @@ class VimModeEditor extends CustomEditor {
 		const end = lineEnd(text, offset);
 
 		if (end > start) {
+			this.writeRegister(text.slice(start, end));
 			this.edit(() => ({
 				text: replaceRange(text, start, end),
 				cursorOffset: start,
@@ -456,6 +467,35 @@ class VimModeEditor extends CustomEditor {
 		}
 
 		this.setMode("insert");
+	}
+
+	private yankLine(): void {
+		this.clearPending();
+		const text = this.getCurrentText();
+		const offset = this.getCurrentOffset();
+		const start = lineStart(text, offset);
+		const end = lineEnd(text, offset);
+		this.writeRegister(text.slice(start, Math.min(end + 1, text.length)));
+	}
+
+	private put(after: boolean): void {
+		this.clearPending();
+		if (!this.unnamedRegister) return;
+		const register = this.unnamedRegister;
+		this.edit((text, offset) => {
+			if (register.endsWith("\n")) {
+				const insertAt = after ? lineEnd(text, offset) + (lineEnd(text, offset) < text.length ? 1 : 0) : lineStart(text, offset);
+				const nextText = replaceRange(text, insertAt, insertAt, register);
+				return { text: nextText, cursorOffset: insertAt };
+			}
+
+			const insertAt = after ? Math.min(nextGraphemeOffset(text, offset), text.length) : offset;
+			const nextText = replaceRange(text, insertAt, insertAt, register);
+			return {
+				text: nextText,
+				cursorOffset: Math.max(insertAt, insertAt + register.length - 1),
+			};
+		});
 	}
 
 	private joinLines(): void {
@@ -535,6 +575,13 @@ class VimModeEditor extends CustomEditor {
 		}
 
 		switch (this.pending) {
+			case "y": {
+				if (data === "y") {
+					this.yankLine();
+					return true;
+				}
+				break;
+			}
 			case "d": {
 				if (data === "d") {
 					this.deleteLine();
@@ -668,6 +715,12 @@ class VimModeEditor extends CustomEditor {
 			case "x":
 				this.deleteUnderCursor();
 				return;
+			case "p":
+				this.put(true);
+				return;
+			case "P":
+				this.put(false);
+				return;
 			case "J":
 				this.joinLines();
 				return;
@@ -679,6 +732,9 @@ class VimModeEditor extends CustomEditor {
 				return;
 			case "c":
 				this.pending = "c";
+				return;
+			case "y":
+				this.pending = "y";
 				return;
 			case "f":
 				this.pending = "f";
