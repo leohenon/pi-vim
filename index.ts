@@ -1,5 +1,5 @@
 import { copyToClipboard, CustomEditor, type ExtensionAPI, type ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import { Key, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 
 type Mode = "normal" | "insert";
 type Pending = "d" | "c" | "y" | "f" | "F" | "t" | "T" | "r" | undefined;
@@ -859,6 +859,22 @@ class VimModeEditor extends CustomEditor {
 		}
 
 		if (this.mode === "insert") {
+			if (matchesKey(data, Key.shiftAlt("a")) || data === "\x1bA") {
+				this.moveToOffset(lineEnd(this.getCurrentText(), this.getCurrentOffset()));
+				return;
+			}
+			if (matchesKey(data, Key.shiftAlt("i")) || data === "\x1bI") {
+				this.moveToOffset(lineStart(this.getCurrentText(), this.getCurrentOffset()));
+				return;
+			}
+			if (matchesKey(data, Key.alt("o")) || data === "\x1bo") {
+				this.openLineBelow();
+				return;
+			}
+			if (matchesKey(data, Key.shiftAlt("o")) || data === "\x1bO") {
+				this.openLineAbove();
+				return;
+			}
 			super.handleInput(data);
 			return;
 		}
