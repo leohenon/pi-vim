@@ -35,6 +35,7 @@ Toggle with:
 - `dd`, `dw`, `cc`, `cw`
 - `f`, `F`, `t`, `T`
 - `u` → undo
+- `Ctrl-r` → redo
 
 App-level pi keybindings still work through `CustomEditor`.
 

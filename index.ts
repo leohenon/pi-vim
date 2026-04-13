@@ -9,8 +9,19 @@ type CustomEditorArgs = ConstructorParameters<typeof CustomEditor>;
 type InternalEditor = {
 	state: {
 		cursorLine: number;
+		lines?: string[];
+		cursorCol?: number;
 	};
 	setCursorCol(col: number): void;
+	onChange?: (text: string) => void;
+	preferredVisualCol?: number | null;
+	historyIndex?: number;
+	lastAction?: string | null;
+};
+
+type EditorSnapshot = {
+	text: string;
+	cursor: Cursor;
 };
 
 const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
@@ -191,6 +202,7 @@ function replaceRange(text: string, start: number, end: number, replacement = ""
 class VimModeEditor extends CustomEditor {
 	private mode: Mode = "insert";
 	private pending: Pending;
+	private readonly redoStack: EditorSnapshot[] = [];
 
 	constructor(
 		tui: CustomEditorArgs[0],
@@ -208,6 +220,29 @@ class VimModeEditor extends CustomEditor {
 
 	private clearPending(): void {
 		this.pending = undefined;
+	}
+
+	private captureSnapshot(): EditorSnapshot {
+		const cursor = this.getCursor();
+		return {
+			text: this.getText(),
+			cursor: { line: cursor.line, col: cursor.col },
+		};
+	}
+
+	private restoreSnapshot(snapshot: EditorSnapshot): void {
+		this.editor.state.lines = snapshot.text.split("\n");
+		this.editor.state.cursorLine = snapshot.cursor.line;
+		this.editor.setCursorCol(snapshot.cursor.col);
+		this.editor.preferredVisualCol = null;
+		this.editor.historyIndex = -1;
+		this.editor.lastAction = null;
+		this.editor.onChange?.(snapshot.text);
+		this.tui.requestRender();
+	}
+
+	private clearRedoStack(): void {
+		this.redoStack.length = 0;
 	}
 
 	private setMode(mode: Mode): void {
@@ -257,6 +292,7 @@ class VimModeEditor extends CustomEditor {
 		if (!next) return false;
 		if (next.text === text && next.cursorOffset === offset) return false;
 
+		this.clearRedoStack();
 		this.setText(next.text);
 		const cursor = offsetToCursor(this.getLines(), next.cursorOffset);
 		this.setCursor(cursor.line, cursor.col);
@@ -476,6 +512,21 @@ class VimModeEditor extends CustomEditor {
 		) || matchesKey(data, "escape");
 	}
 
+	private performUndo(): void {
+		const before = this.captureSnapshot();
+		super.handleInput("\x1f");
+		const after = this.captureSnapshot();
+		if (after.text !== before.text || after.cursor.line !== before.cursor.line || after.cursor.col !== before.cursor.col) {
+			this.redoStack.push(before);
+		}
+	}
+
+	private performRedo(): void {
+		const snapshot = this.redoStack.pop();
+		if (!snapshot) return;
+		this.restoreSnapshot(snapshot);
+	}
+
 	private handlePending(data: string): boolean {
 		if (this.isInterruptKey(data)) {
 			this.clearPending();
@@ -555,7 +606,10 @@ class VimModeEditor extends CustomEditor {
 
 		switch (data) {
 			case "u":
-				super.handleInput("\x1f");
+				this.performUndo();
+				return;
+			case "\x12":
+				this.performRedo();
 				return;
 			case "i":
 				this.enterInsert();
