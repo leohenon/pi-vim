@@ -1,7 +1,7 @@
 import { CustomEditor, type ExtensionAPI, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 
-type Mode = "normal" | "insert" | "visual" | "visual-line";
+type Mode = "normal" | "insert" | "replace" | "visual" | "visual-line";
 type Pending = "d" | "c" | "y" | "f" | "F" | "t" | "T" | "r" | undefined;
 type LastFind = { char: string; forward: boolean; till: boolean } | undefined;
 type Cursor = { line: number; col: number };
@@ -280,9 +280,9 @@ class VimModeEditor extends CustomEditor {
 	}
 
 	private updateCursorStyle(): void {
-		const insert = this.mode === "insert";
-		const sequence = insert ? "\x1b[5 q" : "\x1b[2 q";
-		(this.tui as unknown as { setShowHardwareCursor(enabled: boolean): void }).setShowHardwareCursor(insert);
+		const textEntry = this.mode === "insert" || this.mode === "replace";
+		const sequence = this.mode === "replace" ? "\x1b[3 q" : textEntry ? "\x1b[5 q" : "\x1b[2 q";
+		(this.tui as unknown as { setShowHardwareCursor(enabled: boolean): void }).setShowHardwareCursor(textEntry);
 		this.writeCursorShape(sequence);
 		setTimeout(() => this.writeCursorShape(sequence), 0);
 	}
@@ -561,6 +561,11 @@ class VimModeEditor extends CustomEditor {
 		this.setMode("insert");
 	}
 
+	private enterReplace(): void {
+		this.clearPending();
+		this.setMode("replace");
+	}
+
 	private appendAfterCursor(): void {
 		const text = this.getCurrentText();
 		const offset = this.getCurrentOffset();
@@ -687,6 +692,29 @@ class VimModeEditor extends CustomEditor {
 			return {
 				text: replaceRange(text, offset, end, char.repeat(Math.max(1, count))),
 				cursorOffset: offset,
+			};
+		});
+	}
+
+	private replaceModeInput(data: string): void {
+		if (data === "\r") {
+			super.handleInput(data);
+			return;
+		}
+		if (!(data.length === 1 && data.charCodeAt(0) >= 32)) {
+			super.handleInput(data);
+			return;
+		}
+		this.edit((text, offset) => {
+			if (offset < text.length && text[offset] !== "\n") {
+				return {
+					text: replaceRange(text, offset, nextGraphemeOffset(text, offset), data),
+					cursorOffset: offset + data.length,
+				};
+			}
+			return {
+				text: replaceRange(text, offset, offset, data),
+				cursorOffset: offset + data.length,
 			};
 		});
 	}
@@ -1187,7 +1215,7 @@ class VimModeEditor extends CustomEditor {
 		if (this.isInterruptKey(data)) {
 			if (this.mode === "visual" || this.mode === "visual-line") {
 				this.exitVisual();
-			} else if (this.mode === "insert") {
+			} else if (this.mode === "insert" || this.mode === "replace") {
 				if (this.isShowingAutocomplete()) {
 					super.handleInput(data);
 				}
@@ -1203,21 +1231,25 @@ class VimModeEditor extends CustomEditor {
 			return;
 		}
 
-		if (this.mode === "insert") {
-			if (matchesKey(data, Key.shiftAlt("a")) || data === "\x1bA") {
+		if (this.mode === "insert" || this.mode === "replace") {
+			if (this.mode === "insert" && (matchesKey(data, Key.shiftAlt("a")) || data === "\x1bA")) {
 				this.moveToOffset(lineEnd(this.getCurrentText(), this.getCurrentOffset()));
 				return;
 			}
-			if (matchesKey(data, Key.shiftAlt("i")) || data === "\x1bI") {
+			if (this.mode === "insert" && (matchesKey(data, Key.shiftAlt("i")) || data === "\x1bI")) {
 				this.moveToOffset(lineStart(this.getCurrentText(), this.getCurrentOffset()));
 				return;
 			}
-			if (matchesKey(data, Key.alt("o")) || data === "\x1bo") {
+			if (this.mode === "insert" && (matchesKey(data, Key.alt("o")) || data === "\x1bo")) {
 				this.openLineBelow();
 				return;
 			}
-			if (matchesKey(data, Key.shiftAlt("o")) || data === "\x1bO") {
+			if (this.mode === "insert" && (matchesKey(data, Key.shiftAlt("o")) || data === "\x1bO")) {
 				this.openLineAbove();
+				return;
+			}
+			if (this.mode === "replace") {
+				this.replaceModeInput(data);
 				return;
 			}
 			super.handleInput(data);
@@ -1401,6 +1433,9 @@ class VimModeEditor extends CustomEditor {
 			case "r":
 				this.pending = "r";
 				return;
+			case "R":
+				this.enterReplace();
+				return;
 			case "p":
 				this.put(true, this.takeCount(1));
 				return;
@@ -1529,11 +1564,13 @@ export default function (pi: ExtensionAPI) {
 					const prefix =
 						mode === "insert"
 							? theme.fg("muted", "-- INSERT -- ")
-							: mode === "visual"
-								? theme.fg("accent", "-- VISUAL -- ")
-								: mode === "visual-line"
-									? theme.fg("accent", "-- VISUAL LINE -- ")
-									: "";
+							: mode === "replace"
+								? theme.fg("muted", "-- REPLACE -- ")
+								: mode === "visual"
+									? theme.fg("accent", "-- VISUAL -- ")
+									: mode === "visual-line"
+										? theme.fg("accent", "-- VISUAL LINE -- ")
+										: "";
 					const pwdLine = truncateToWidth(prefix + theme.fg("dim", pwd), width, theme.fg("dim", "..."));
 
 					const statsParts: string[] = [];
