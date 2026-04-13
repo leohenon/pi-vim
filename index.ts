@@ -749,6 +749,27 @@ class VimModeEditor extends CustomEditor {
 		this.setMode("insert");
 	}
 
+	private toggleCase(count = 1): void {
+		this.clearPending();
+		this.edit((text, offset) => {
+			if (offset >= lineEnd(text, offset)) return undefined;
+			let current = offset;
+			let result = text;
+			for (let i = 0; i < count; i++) {
+				if (current >= lineEnd(result, offset)) break;
+				const end = nextGraphemeOffset(result, current);
+				const segment = result.slice(current, end);
+				const toggled = segment === segment.toUpperCase() ? segment.toLowerCase() : segment.toUpperCase();
+				result = replaceRange(result, current, end, toggled);
+				current = current + toggled.length;
+			}
+			return {
+				text: result,
+				cursorOffset: Math.max(offset, current - 1),
+			};
+		});
+	}
+
 	private deleteUnderCursor(count = 1): void {
 		this.clearPending();
 		this.edit((text, offset) => {
@@ -1222,7 +1243,7 @@ class VimModeEditor extends CustomEditor {
 				this.clearPending();
 				this.normalizeCursorForNormalMode();
 				this.setMode("normal");
-			} else if (this.pending) {
+			} else if (this.pending || this.pendingTextObject || this.pendingFindOp || this.pendingG || this.count) {
 				this.clearPending();
 				this.tui.requestRender();
 			} else {
@@ -1284,7 +1305,7 @@ class VimModeEditor extends CustomEditor {
 		}
 
 		if (this.pending && data >= "0" && data <= "9") {
-			this.count += data;
+			if (this.count.length < 5) this.count += data;
 			this.emitStatus();
 			return;
 		}
@@ -1325,7 +1346,7 @@ class VimModeEditor extends CustomEditor {
 		}
 
 		if (data >= "0" && data <= "9" && (data !== "0" || this.count.length > 0)) {
-			this.count += data;
+			if (this.count.length < 5) this.count += data;
 			this.emitStatus();
 			return;
 		}
@@ -1421,6 +1442,9 @@ class VimModeEditor extends CustomEditor {
 			case "x":
 				this.deleteUnderCursor(this.takeCount(1));
 				return;
+			case "~":
+				this.toggleCase(this.takeCount(1));
+				return;
 			case "s":
 				this.substituteChar();
 				return;
@@ -1502,6 +1526,7 @@ class VimModeEditor extends CustomEditor {
 		}
 
 		if (data.length === 1 && data.charCodeAt(0) >= 32) return;
+		if (this.count || this.pendingG || this.pendingTextObject || this.pendingFindOp || this.pending) this.clearPending();
 		super.handleInput(data);
 	}
 }
