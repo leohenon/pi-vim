@@ -1050,7 +1050,8 @@ class VimModeEditor extends CustomEditor {
 			return false;
 		}
 		const around = this.pendingTextObject === "a";
-		const range = data === "w" ? this.wordObjectRange(around) : this.delimitedObjectRange(data, around);
+		const normalized = data === ")" ? "(" : data === "]" ? "[" : data === "}" ? "{" : data;
+		const range = normalized === "w" ? this.wordObjectRange(around) : this.delimitedObjectRange(normalized, around);
 		if (!range) {
 			this.clearPending();
 			return true;
@@ -1249,6 +1250,11 @@ class VimModeEditor extends CustomEditor {
 			this.emitStatus();
 			return;
 		}
+		if (this.pendingTextObject && (data === '"' || data === "'" || data === "`" || data === "(" || data === ")" || data === "[" || data === "]" || data === "{" || data === "}" || data === "w")) {
+			this.handleTextObject(data);
+			return;
+		}
+
 
 		if (this.pendingFindOp) {
 			if (this.handlePendingFindOp(data)) return;
