@@ -229,6 +229,7 @@ function replaceRange(text: string, start: number, end: number, replacement = ""
 class VimModeEditor extends CustomEditor {
 	private mode: Mode = "insert";
 	private pending: Pending;
+	private pendingTextObject?: "i" | "a";
 	private count = "";
 	private pendingG = false;
 	private lastFind: LastFind;
@@ -251,6 +252,7 @@ class VimModeEditor extends CustomEditor {
 
 	private clearPending(): void {
 		this.pending = undefined;
+		this.pendingTextObject = undefined;
 		this.pendingG = false;
 		this.count = "";
 	}
@@ -287,6 +289,22 @@ class VimModeEditor extends CustomEditor {
 	private writeRegister(text: string): void {
 		this.unnamedRegister = text;
 		void copyToClipboard(text).catch(() => {});
+	}
+
+	private wordObjectRange(around: boolean): { start: number; end: number } | undefined {
+		const text = this.getCurrentText();
+		let start = this.getCurrentOffset();
+		if (!isWord(text[start])) {
+			if (isWord(text[start - 1])) start -= 1;
+			else return undefined;
+		}
+		while (start > 0 && isWord(text[start - 1])) start--;
+		let end = start;
+		while (end < text.length && isWord(text[end])) end++;
+		if (around) {
+			while (end < text.length && (text[end] === " " || text[end] === "\t")) end++;
+		}
+		return { start, end };
 	}
 
 	private setMode(mode: Mode): void {
@@ -720,6 +738,22 @@ class VimModeEditor extends CustomEditor {
 		return true;
 	}
 
+	private handleTextObject(data: string): boolean {
+		if (data !== "w" || !this.pendingTextObject || !this.pending) {
+			this.clearPending();
+			return false;
+		}
+		const range = this.wordObjectRange(this.pendingTextObject === "a");
+		if (!range) {
+			this.clearPending();
+			return true;
+		}
+		const change = this.pending === "c";
+		const yank = this.pending === "y";
+		this.applyRange(range.start, range.end, change, yank);
+		return true;
+	}
+
 	private handlePending(data: string): boolean {
 		if (this.isInterruptKey(data)) {
 			this.clearPending();
@@ -802,6 +836,10 @@ class VimModeEditor extends CustomEditor {
 			return;
 		}
 
+		if (this.pendingTextObject) {
+			if (this.handleTextObject(data)) return;
+		}
+
 		if (this.pending && this.handlePending(data)) {
 			return;
 		}
@@ -832,14 +870,8 @@ class VimModeEditor extends CustomEditor {
 				for (let i = 0; i < count; i++) this.performRedo();
 				return;
 			}
-			case "i":
-				this.enterInsert();
-				return;
 			case "I":
 				this.insertLineStart();
-				return;
-			case "a":
-				this.appendAfterCursor();
 				return;
 			case "A":
 				this.appendLineEnd();
@@ -951,6 +983,20 @@ class VimModeEditor extends CustomEditor {
 				return;
 			case "y":
 				this.pending = "y";
+				return;
+			case "i":
+				if (this.pending === "d" || this.pending === "c" || this.pending === "y") {
+					this.pendingTextObject = "i";
+					return;
+				}
+				this.enterInsert();
+				return;
+			case "a":
+				if (this.pending === "d" || this.pending === "c" || this.pending === "y") {
+					this.pendingTextObject = "a";
+					return;
+				}
+				this.appendAfterCursor();
 				return;
 			case "f":
 				this.pending = "f";
