@@ -20,7 +20,7 @@ Toggle with:
 
 ### Insert mode
 
-- `Esc` → normal mode
+- `Esc` / `Ctrl-[` → normal mode
 - `Shift+Alt+A` → end of line
 - `Shift+Alt+I` → start of line
 - `Alt+o` → open line below

@@ -704,7 +704,7 @@ class VimModeEditor extends CustomEditor {
 		return (this as unknown as { keybindings: { matches(data: string, action: string): boolean } }).keybindings.matches(
 			data,
 			"app.interrupt",
-		) || matchesKey(data, "escape");
+		) || matchesKey(data, "escape") || matchesKey(data, "ctrl+[");
 	}
 
 	private performUndo(): void {
