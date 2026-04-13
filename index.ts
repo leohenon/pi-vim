@@ -1212,6 +1212,12 @@ class VimModeEditor extends CustomEditor {
 			}
 		}
 
+		if (this.pending && data >= "0" && data <= "9") {
+			this.count += data;
+			this.emitStatus();
+			return;
+		}
+
 		if ((this.pending === "d" || this.pending === "c" || this.pending === "y") && (data === "i" || data === "a")) {
 			this.pendingTextObject = data;
 			this.emitStatus();
