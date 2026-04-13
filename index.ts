@@ -253,6 +253,7 @@ class VimModeEditor extends CustomEditor {
 	) {
 		super(tui, theme, keybindings);
 		this.emitStatus();
+		setTimeout(() => this.updateCursorStyle(), 0);
 	}
 
 	private get editor(): InternalEditor {
@@ -269,8 +270,26 @@ class VimModeEditor extends CustomEditor {
 		return "";
 	}
 
+	private writeCursorShape(sequence: string): void {
+		try {
+			process.stdout.write(sequence);
+		} catch {}
+		try {
+			this.tui.terminal.write(sequence);
+		} catch {}
+	}
+
+	private updateCursorStyle(): void {
+		const insert = this.mode === "insert";
+		const sequence = insert ? "\x1b[5 q" : "\x1b[2 q";
+		(this.tui as unknown as { setShowHardwareCursor(enabled: boolean): void }).setShowHardwareCursor(insert);
+		this.writeCursorShape(sequence);
+		setTimeout(() => this.writeCursorShape(sequence), 0);
+	}
+
 	private emitStatus(): void {
 		this.onStatusChange(this.mode, this.getPendingDisplay());
+		this.updateCursorStyle();
 		this.tui.requestRender();
 	}
 
@@ -897,7 +916,15 @@ class VimModeEditor extends CustomEditor {
 
 	override render(width: number): string[] {
 		const range = this.getVisualRange() ?? this.flashRange;
-		if (!range) return super.render(width);
+		if (!range) {
+			const lines = super.render(width);
+			if (this.mode !== "insert") return lines;
+			return lines.map((line) =>
+				line
+					.replace(/\x1b_pi:c\x07\x1b\[7m \x1b\[0m/g, "\x1b_pi:c\x07")
+					.replace(/\x1b_pi:c\x07\x1b\[7m([\s\S])\x1b\[0m/g, "\x1b_pi:c\x07$1"),
+			);
+		}
 
 		const editor = this.editor;
 		const paddingX = Math.min(editor.paddingX ?? 0, Math.max(0, Math.floor((width - 1) / 2)));
