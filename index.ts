@@ -230,7 +230,7 @@ class VimModeEditor extends CustomEditor {
 	private mode: Mode = "insert";
 	private pending: Pending;
 	private pendingTextObject?: "i" | "a";
-	private pendingFindOp?: { op: "d" | "c" | "y"; motion: "f" | "F" | "t" | "T" };
+	private pendingFindOp?: { op: "d" | "c" | "y"; motion: "f" | "F" | "t" | "T"; count: number };
 	private count = "";
 	private pendingG = false;
 	private lastFind: LastFind;
@@ -736,7 +736,16 @@ class VimModeEditor extends CustomEditor {
 
 	private handlePendingFindOp(data: string): boolean {
 		if (!this.pendingFindOp || !(data.length === 1 && data.charCodeAt(0) >= 32)) return false;
-		const target = this.findCharTarget(data, this.pendingFindOp.motion === "f" || this.pendingFindOp.motion === "t", this.pendingFindOp.motion === "t" || this.pendingFindOp.motion === "T");
+		let target: number | undefined;
+		for (let i = 0; i < this.pendingFindOp.count; i++) {
+			const next = this.findCharTarget(data, this.pendingFindOp.motion === "f" || this.pendingFindOp.motion === "t", this.pendingFindOp.motion === "t" || this.pendingFindOp.motion === "T");
+			if (next === undefined) {
+				target = undefined;
+				break;
+			}
+			target = next;
+			this.moveToOffset(next);
+		}
 		if (target === undefined) {
 			this.clearPending();
 			return true;
@@ -782,7 +791,7 @@ class VimModeEditor extends CustomEditor {
 			case "d":
 			case "c": {
 				if (data === "f" || data === "F" || data === "t" || data === "T") {
-					this.pendingFindOp = { op: this.pending, motion: data };
+					this.pendingFindOp = { op: this.pending, motion: data, count: this.takeCount(1) };
 					return true;
 				}
 				if (data === this.pending) {
