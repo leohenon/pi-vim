@@ -414,17 +414,7 @@ class VimModeEditor extends CustomEditor {
 	}
 
 	private moveWord(direction: "next" | "prev" | "end", big: boolean, count = 1): void {
-		let target = this.getCurrentOffset();
-		for (let i = 0; i < count; i++) {
-			const text = this.getCurrentText();
-			target =
-				direction === "next"
-					? nextWordStart(text, target, big)
-					: direction === "prev"
-						? prevWordStart(text, target, big)
-						: wordEnd(text, target, big);
-			this.moveToOffset(target);
-		}
+		this.moveToOffset(this.wordMotionTarget(direction, big, count));
 	}
 
 	private moveLeft(count = 1): void {
@@ -576,9 +566,23 @@ class VimModeEditor extends CustomEditor {
 		if (change) this.setMode("insert");
 	}
 
+	private wordMotionTarget(direction: "next" | "prev" | "end", big: boolean, count: number, from = this.getCurrentOffset()): number {
+		let target = from;
+		for (let i = 0; i < count; i++) {
+			const text = this.getCurrentText();
+			target =
+				direction === "next"
+					? nextWordStart(text, target, big)
+					: direction === "prev"
+						? prevWordStart(text, target, big)
+						: wordEnd(text, target, big);
+		}
+		return target;
+	}
+
 	private deleteWord(change: boolean): void {
 		const offset = this.getCurrentOffset();
-		const endOffset = nextWordStart(this.getCurrentText(), offset, false);
+		const endOffset = this.wordMotionTarget("next", false, this.takeCount(1), offset);
 		this.applyRange(offset, endOffset, change);
 	}
 
@@ -788,16 +792,12 @@ class VimModeEditor extends CustomEditor {
 					else this.substituteLine(count);
 					return true;
 				}
-				if (data === "w") {
-					if (this.pending === "y") this.applyRange(this.getCurrentOffset(), nextWordStart(this.getCurrentText(), this.getCurrentOffset(), false), false, true);
-					else this.deleteWord(this.pending === "c");
-					return true;
-				}
-				if (data === "e") return this.applyPendingOperator(wordEnd(this.getCurrentText(), this.getCurrentOffset(), false), true);
-				if (data === "b") return this.applyPendingOperator(prevWordStart(this.getCurrentText(), this.getCurrentOffset(), false));
-				if (data === "W") return this.applyPendingOperator(nextWordStart(this.getCurrentText(), this.getCurrentOffset(), true));
-				if (data === "E") return this.applyPendingOperator(wordEnd(this.getCurrentText(), this.getCurrentOffset(), true), true);
-				if (data === "B") return this.applyPendingOperator(prevWordStart(this.getCurrentText(), this.getCurrentOffset(), true));
+				if (data === "w") return this.applyPendingOperator(this.wordMotionTarget("next", false, this.takeCount(1)));
+				if (data === "e") return this.applyPendingOperator(this.wordMotionTarget("end", false, this.takeCount(1)), true);
+				if (data === "b") return this.applyPendingOperator(this.wordMotionTarget("prev", false, this.takeCount(1)));
+				if (data === "W") return this.applyPendingOperator(this.wordMotionTarget("next", true, this.takeCount(1)));
+				if (data === "E") return this.applyPendingOperator(this.wordMotionTarget("end", true, this.takeCount(1)), true);
+				if (data === "B") return this.applyPendingOperator(this.wordMotionTarget("prev", true, this.takeCount(1)));
 				if (data === "$") return this.applyPendingOperator(lineEnd(this.getCurrentText(), this.getCurrentOffset()));
 				if (data === "0") return this.applyPendingOperator(lineStart(this.getCurrentText(), this.getCurrentOffset()));
 				if (data === "^") return this.applyPendingOperator(firstNonWhitespace(this.getCurrentText(), this.getCurrentOffset()));
