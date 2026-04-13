@@ -1,12 +1,27 @@
 {
-  "name": "pi-vim",
-  "private": true,
-  "version": "0.1.0",
+  "name": "@leohenon/pi-vim",
+  "version": "0.0.1",
   "description": "Vim-mode editor extension for pi",
   "type": "module",
-  "keywords": ["pi-package"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/leohenon/pi-vim.git"
+  },
+  "homepage": "https://github.com/leohenon/pi-vim#readme",
+  "bugs": {
+    "url": "https://github.com/leohenon/pi-vim/issues"
+  },
   "scripts": {
     "check": "tsc --noEmit"
+  },
+  "files": [
+    "index.ts",
+    "README.md",
+    "assets/demo.gif"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "pi": {
     "extensions": ["./index.ts"]

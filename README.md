@@ -1,6 +1,8 @@
 # pi-vim
 
-Full vim mode for [pi](https://github.com/badlogic/pi-mono).
+[![npm](https://img.shields.io/npm/v/%40leohenon%2Fpi-vim?style=flat-square&logo=npm&logoColor=white&label=npm&color=f59e0b)](https://www.npmjs.com/package/@leohenon/pi-vim)
+
+Vim mode for [pi](https://github.com/badlogic/pi-mono).
 
 Normal, insert, visual, and replace modes with motions, text objects, yank/put, and undo/redo.
 
@@ -11,7 +13,7 @@ Normal, insert, visual, and replace modes with motions, text objects, yank/put, 
 ## Install
 
 ```bash
-pi install git:github.com/leohenon/pi-vim
+pi install npm:@leohenon/pi-vim
 ```
 
 ## Usage
@@ -127,3 +129,6 @@ pi-vim/
   package.json
   README.md
 ```
+
+> [!NOTE]
+> If you run into any bugs, please open an issue.
