@@ -230,6 +230,7 @@ class VimModeEditor extends CustomEditor {
 	private mode: Mode = "insert";
 	private pending: Pending;
 	private pendingTextObject?: "i" | "a";
+	private pendingFindOp?: { op: "d" | "c" | "y"; motion: "f" | "F" | "t" | "T" };
 	private count = "";
 	private pendingG = false;
 	private lastFind: LastFind;
@@ -253,6 +254,7 @@ class VimModeEditor extends CustomEditor {
 	private clearPending(): void {
 		this.pending = undefined;
 		this.pendingTextObject = undefined;
+		this.pendingFindOp = undefined;
 		this.pendingG = false;
 		this.count = "";
 	}
@@ -738,6 +740,19 @@ class VimModeEditor extends CustomEditor {
 		return true;
 	}
 
+	private handlePendingFindOp(data: string): boolean {
+		if (!this.pendingFindOp || !(data.length === 1 && data.charCodeAt(0) >= 32)) return false;
+		const target = this.findCharTarget(data, this.pendingFindOp.motion === "f" || this.pendingFindOp.motion === "t", this.pendingFindOp.motion === "t" || this.pendingFindOp.motion === "T");
+		if (target === undefined) {
+			this.clearPending();
+			return true;
+		}
+		this.pending = this.pendingFindOp.op;
+		const inclusive = this.pendingFindOp.motion === "f" || this.pendingFindOp.motion === "F";
+		this.pendingFindOp = undefined;
+		return this.applyPendingOperator(target, inclusive);
+	}
+
 	private handleTextObject(data: string): boolean {
 		if (data !== "w" || !this.pendingTextObject || !this.pending) {
 			this.clearPending();
@@ -772,6 +787,10 @@ class VimModeEditor extends CustomEditor {
 			case "y":
 			case "d":
 			case "c": {
+				if (data === "f" || data === "F" || data === "t" || data === "T") {
+					this.pendingFindOp = { op: this.pending, motion: data };
+					return true;
+				}
 				if (data === this.pending) {
 					if (this.pending === "y") this.yankLine();
 					else if (this.pending === "d") this.deleteLine();
@@ -798,9 +817,17 @@ class VimModeEditor extends CustomEditor {
 			case "t":
 			case "T": {
 				if (data.length === 1 && data.charCodeAt(0) >= 32) {
-					this.findChar(data, this.pending === "f" || this.pending === "t", this.pending === "t" || this.pending === "T");
-					this.clearPending();
-					return true;
+					const forward = this.pending === "f" || this.pending === "t";
+					const till = this.pending === "t" || this.pending === "T";
+					if (this.pendingTextObject) {
+						this.clearPending();
+						return true;
+					}
+					if (this.pending === "f" || this.pending === "F" || this.pending === "t" || this.pending === "T") {
+						this.findChar(data, forward, till);
+						this.clearPending();
+						return true;
+					}
 				}
 				break;
 			}
@@ -834,6 +861,10 @@ class VimModeEditor extends CustomEditor {
 		if (this.mode === "insert") {
 			super.handleInput(data);
 			return;
+		}
+
+		if (this.pendingFindOp) {
+			if (this.handlePendingFindOp(data)) return;
 		}
 
 		if (this.pendingTextObject) {
