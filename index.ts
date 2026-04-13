@@ -149,6 +149,32 @@ function firstNonWhitespace(text: string, offset: number): number {
 	return pos;
 }
 
+function isBlankLine(text: string, offset: number): boolean {
+	const start = lineStart(text, offset);
+	const end = lineEnd(text, offset);
+	return /^\s*$/.test(text.slice(start, end));
+}
+
+function paragraphForward(text: string, offset: number): number {
+	let pos = lineEnd(text, offset);
+	while (pos < text.length) {
+		pos += 1;
+		if (pos >= text.length) return lineStart(text, text.length);
+		if (!isBlankLine(text, pos) && (pos === 0 || isBlankLine(text, pos - 1))) return pos;
+		pos = lineEnd(text, pos);
+	}
+	return offset;
+}
+
+function paragraphBackward(text: string, offset: number): number {
+	let pos = lineStart(text, offset);
+	while (pos > 0) {
+		pos = lineStart(text, pos - 1);
+		if (!isBlankLine(text, pos) && (pos === 0 || isBlankLine(text, pos - 1))) return pos;
+	}
+	return 0;
+}
+
 function totalLength(lines: string[]): number {
 	if (lines.length === 0) return 0;
 	return lines.reduce((sum, line) => sum + line.length, 0) + lines.length - 1;
@@ -429,6 +455,14 @@ class VimModeEditor extends CustomEditor {
 		const lineIndex = clamp(lineNumber - 1, 0, Math.max(0, lines.length - 1));
 		const col = Math.min(this.getCursor().col, Math.max(0, (lines[lineIndex] ?? "").length - 1));
 		this.setCursor(lineIndex, Math.max(0, col));
+	}
+
+	private moveParagraph(forward: boolean, count = 1): void {
+		let offset = this.getCurrentOffset();
+		for (let i = 0; i < count; i++) {
+			offset = forward ? paragraphForward(this.getCurrentText(), offset) : paragraphBackward(this.getCurrentText(), offset);
+		}
+		this.moveToOffset(offset);
 	}
 
 	private moveLineEnd(): void {
@@ -834,6 +868,12 @@ class VimModeEditor extends CustomEditor {
 				return;
 			case "G":
 				this.moveToLine(this.takeCount(this.getLines().length));
+				return;
+			case "{":
+				this.moveParagraph(false, this.takeCount(1));
+				return;
+			case "}":
+				this.moveParagraph(true, this.takeCount(1));
 				return;
 			case "o":
 				this.openLineBelow();
