@@ -51,14 +51,14 @@ Toggle with:
 - `d0`, `d^`, `d$`, `d_`, `dG`
 - `d{count}j`, `d{count}k`
 - `df`, `dF`, `dt`, `dT`
-- `diw`, `daw`
+- `diw`, `daw`, `di"`, `da"`, `di'`, `da'`, ``di` ``, ``da` ``, `di(`, `da(`, `di[`, `da[`, `di{`, `da{`
 
 ### Change
 
 - `cc`, `cw`, `ce`, `cb`, `cW`, `cE`, `cB`
 - `c0`, `c^`, `c$`, `c_`
 - `cf`, `cF`, `ct`, `cT`
-- `ciw`, `caw`
+- `ciw`, `caw`, `ci"`, `ca"`, `ci'`, `ca'`, ``ci` ``, ``ca` ``, `ci(`, `ca(`, `ci[`, `ca[`, `ci{`, `ca{`
 
 ### Yank
 
@@ -67,7 +67,7 @@ Toggle with:
 - `y0`, `y^`, `y$`, `y_`, `yG`
 - `y{count}j`, `y{count}k`
 - `yf`
-- `yiw`, `yaw`
+- `yiw`, `yaw`, `yi"`, `ya"`, `yi'`, `ya'`, ``yi` ``, ``ya` ``, `yi(`, `ya(`, `yi[`, `ya[`, `yi{`, `ya{`
 
 ### Edit
 

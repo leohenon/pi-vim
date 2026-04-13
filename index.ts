@@ -329,6 +329,71 @@ class VimModeEditor extends CustomEditor {
 		return { start, end };
 	}
 
+	private delimitedObjectRange(char: string, around: boolean): { start: number; end: number } | undefined {
+		const pairs: Record<string, [string, string]> = {
+			'"': ['"', '"'],
+			"'": ["'", "'"],
+			"`": ["`", "`"],
+			"(": ["(", ")"],
+			")": ["(", ")"],
+			"[": ["[", "]"],
+			"]": ["[", "]"],
+			"{": ["{", "}"],
+			"}": ["{", "}"],
+		};
+		const pair = pairs[char];
+		if (!pair) return undefined;
+		const [open, close] = pair;
+		const text = this.getCurrentText();
+		if (text.length === 0) return undefined;
+		let offset = Math.min(this.getCurrentOffset(), text.length - 1);
+
+		if (open === close) {
+			if (text[offset] === open && text[offset + 1] === open) return undefined;
+			let left = -1;
+			for (let i = offset; i >= 0; i--) {
+				if (text[i] === open && text[i - 1] !== "\\") {
+					left = i;
+					break;
+				}
+			}
+			if (left === -1) return undefined;
+			let right = -1;
+			for (let i = Math.max(offset, left + 1); i < text.length; i++) {
+				if (text[i] === close && text[i - 1] !== "\\") {
+					right = i;
+					break;
+				}
+			}
+			if (right === -1 || right <= left) return undefined;
+			if (offset < left || offset > right) return undefined;
+			return around ? { start: left, end: right + 1 } : { start: left + 1, end: right };
+		}
+
+		const candidates: Array<{ start: number; end: number }> = [];
+		for (let start = 0; start < text.length; start++) {
+			if (text[start] !== open) continue;
+			let depth = 0;
+			for (let end = start + 1; end < text.length; end++) {
+				if (text[end] === open) depth++;
+				else if (text[end] === close) {
+					if (depth === 0) {
+						if (offset >= start && offset <= end) candidates.push({ start, end });
+						break;
+					}
+					depth--;
+				}
+			}
+		}
+		if (candidates.length === 0) return undefined;
+		const match = candidates.reduce((best, candidate) => {
+			if (!best) return candidate;
+			return candidate.end - candidate.start < best.end - best.start ? candidate : best;
+		}, undefined as { start: number; end: number } | undefined);
+		if (!match) return undefined;
+		return around ? { start: match.start, end: match.end + 1 } : { start: match.start + 1, end: match.end };
+	}
+
 	private setMode(mode: Mode): void {
 		if (this.mode === mode) return;
 		this.mode = mode;
@@ -903,11 +968,12 @@ class VimModeEditor extends CustomEditor {
 	}
 
 	private handleTextObject(data: string): boolean {
-		if (data !== "w" || !this.pendingTextObject || !this.pending) {
+		if (!this.pendingTextObject || !this.pending) {
 			this.clearPending();
 			return false;
 		}
-		const range = this.wordObjectRange(this.pendingTextObject === "a");
+		const around = this.pendingTextObject === "a";
+		const range = data === "w" ? this.wordObjectRange(around) : this.delimitedObjectRange(data, around);
 		if (!range) {
 			this.clearPending();
 			return true;
