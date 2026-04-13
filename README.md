@@ -1,6 +1,12 @@
 # pi-vim
 
-Vim mode for [pi](https://github.com/badlogic/pi-mono).
+Full vim mode for [pi](https://github.com/badlogic/pi-mono).
+
+Normal, insert, visual, and replace modes with motions, text objects, yank/put, and undo/redo.
+
+## Demo
+
+![pi-vim demo](assets/demo.gif)
 
 ## Install
 
@@ -32,6 +38,7 @@ Toggle with:
 - `o`, `O`
 - `v` → visual
 - `V` → visual line
+- `R` → replace
 
 ### Motions
 
@@ -40,7 +47,6 @@ Toggle with:
 - `W`, `B`, `E`
 - `0`, `^`, `_`, `$`
 - `gg`, `G`
-- `{`, `}`
 - `f`, `F`, `t`, `T`
 - `;`, `,`
 - counts on motions
@@ -73,8 +79,10 @@ Toggle with:
 
 - `x`, `s`, `S`
 - `r{char}`
+- `R` → replace mode
+- `~` → toggle case
 - `D`, `C`
-- counts on `x`, `r`
+- counts on `x`, `r`, `~`
 
 ### Put
 
@@ -107,6 +115,9 @@ Toggle with:
 - `y` yank selected lines
 - `c` change selected lines
 - `p`, `P` replace selected lines
+
+> [!NOTE]
+> yanks and puts use an internal unnamed register, not the system clipboard
 
 ## Files
 
