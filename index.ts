@@ -915,7 +915,8 @@ class VimModeEditor extends CustomEditor {
 		}
 
 		switch (data) {
-			case "u": {
+			case "u":
+			case "\x1f": {
 				const count = this.takeCount(1);
 				for (let i = 0; i < count; i++) this.performUndo();
 				return;

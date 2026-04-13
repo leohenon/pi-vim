@@ -44,7 +44,7 @@ Toggle with:
 - `yy`, `Y`, `yw`, `ye`, `yb`, `yW`, `yE`, `yB`, `y{count}j`, `y{count}k`
 - `yy`, `Y`, `p`, `P`
 - `f`, `F`, `t`, `T`, `;`, `,`
-- `u` → undo
+- `u` / `Ctrl-_` → undo
 - `Ctrl-r` → redo
 
 App-level pi keybindings still work through `CustomEditor`.
