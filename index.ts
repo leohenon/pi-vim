@@ -398,25 +398,37 @@ class VimModeEditor extends CustomEditor {
 		let offset = Math.min(this.getCurrentOffset(), text.length - 1);
 
 		if (open === close) {
-			if (text[offset] === open && text[offset + 1] === open) return undefined;
-			let left = -1;
-			for (let i = offset; i >= 0; i--) {
-				if (text[i] === open && text[i - 1] !== "\\") {
-					left = i;
-					break;
+			const startOfLine = lineStart(text, offset);
+			const endOfLine = lineEnd(text, offset);
+			const pairs: Array<{ start: number; end: number }> = [];
+			let pendingQuote: number | undefined;
+			for (let i = startOfLine; i < endOfLine; i++) {
+				if (text[i] !== open || text[i - 1] === "\\") continue;
+				if (pendingQuote === undefined) pendingQuote = i;
+				else {
+					pairs.push({ start: pendingQuote, end: i });
+					pendingQuote = undefined;
 				}
 			}
-			if (left === -1) return undefined;
-			let right = -1;
-			for (let i = Math.max(offset, left + 1); i < text.length; i++) {
-				if (text[i] === close && text[i - 1] !== "\\") {
-					right = i;
-					break;
+			if (pairs.length === 0) return undefined;
+			const candidates = pairs.filter((pair) => offset >= pair.start && offset <= pair.end);
+			if (candidates.length > 0) {
+				const pair = candidates.reduce((best, candidate) =>
+					candidate.end - candidate.start < best.end - best.start ? candidate : best,
+				);
+				return around ? { start: pair.start, end: pair.end + 1 } : { start: pair.start + 1, end: pair.end };
+			}
+			let best: { start: number; end: number; distance: number } | undefined;
+			for (const pair of pairs) {
+				const innerStart = pair.start + 1;
+				const innerEnd = pair.end;
+				const distance = offset < innerStart ? innerStart - offset : offset > innerEnd ? offset - innerEnd : 0;
+				if (!best || distance < best.distance || (distance === best.distance && pair.start > best.start)) {
+					best = { start: pair.start, end: pair.end, distance };
 				}
 			}
-			if (right === -1 || right <= left) return undefined;
-			if (offset < left || offset > right) return undefined;
-			return around ? { start: left, end: right + 1 } : { start: left + 1, end: right };
+			if (!best) return undefined;
+			return around ? { start: best.start, end: best.end + 1 } : { start: best.start + 1, end: best.end };
 		}
 
 		const candidates: Array<{ start: number; end: number }> = [];
