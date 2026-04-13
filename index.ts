@@ -936,6 +936,10 @@ class VimModeEditor extends CustomEditor {
 			case "y":
 			case "d":
 			case "c": {
+				if (data === "i" || data === "a") {
+					this.pendingTextObject = data;
+					return true;
+				}
 				if (data === "f" || data === "F" || data === "t" || data === "T") {
 					this.pendingFindOp = { op: this.pending, motion: data, count: this.takeCount(1) };
 					return true;
@@ -1087,6 +1091,11 @@ class VimModeEditor extends CustomEditor {
 					this.applyVisual("put");
 					return;
 			}
+		}
+
+		if ((this.pending === "d" || this.pending === "c" || this.pending === "y") && (data === "i" || data === "a")) {
+			this.pendingTextObject = data;
+			return;
 		}
 
 		if (this.pendingFindOp) {
