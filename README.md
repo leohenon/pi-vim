@@ -2,8 +2,6 @@
 
 A Vim-mode editor extension for [pi](https://github.com/badlogic/pi-mono).
 
-> Tested against pi 0.64.0.
-
 ## Install
 
 ```bash
@@ -36,6 +34,7 @@ Toggle with:
 - `x`, `J`, `S`
 - `dd`, `dw`, `cc`, `cw`
 - `f`, `F`, `t`, `T`
+- `u` → undo
 
 App-level pi keybindings still work through `CustomEditor`.
 

@@ -554,6 +554,9 @@ class VimModeEditor extends CustomEditor {
 		}
 
 		switch (data) {
+			case "u":
+				super.handleInput("\x1f");
+				return;
 			case "i":
 				this.enterInsert();
 				return;
