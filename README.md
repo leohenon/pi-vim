@@ -34,8 +34,8 @@ Toggle with:
 - `o`, `O`
 - `x`, `s`, `r`, `D`, `C`, `J`, `S`
 - `dd`, `dw`, `cc`, `cw`
-- `yy`, `p`, `P`
-- `f`, `F`, `t`, `T`
+- `yy`, `Y`, `p`, `P`
+- `f`, `F`, `t`, `T`, `;`, `,`
 - `u` → undo
 - `Ctrl-r` → redo
 

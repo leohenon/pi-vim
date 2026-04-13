@@ -3,6 +3,7 @@ import { matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui"
 
 type Mode = "normal" | "insert";
 type Pending = "d" | "c" | "y" | "f" | "F" | "t" | "T" | "r" | undefined;
+type LastFind = { char: string; forward: boolean; till: boolean } | undefined;
 type Cursor = { line: number; col: number };
 type CustomEditorArgs = ConstructorParameters<typeof CustomEditor>;
 
@@ -204,6 +205,7 @@ class VimModeEditor extends CustomEditor {
 	private pending: Pending;
 	private count = "";
 	private pendingG = false;
+	private lastFind: LastFind;
 	private readonly redoStack: EditorSnapshot[] = [];
 	private unnamedRegister = "";
 
@@ -601,7 +603,13 @@ class VimModeEditor extends CustomEditor {
 		});
 	}
 
+	private repeatFind(reverse = false): void {
+		if (!this.lastFind) return;
+		this.findChar(this.lastFind.char, reverse ? !this.lastFind.forward : this.lastFind.forward, this.lastFind.till);
+	}
+
 	private findChar(char: string, forward: boolean, till = false): void {
+		this.lastFind = { char, forward, till };
 		const text = this.getCurrentText();
 		const offset = this.getCurrentOffset();
 		const start = lineStart(text, offset);
@@ -853,6 +861,15 @@ class VimModeEditor extends CustomEditor {
 				return;
 			case "P":
 				this.put(false);
+				return;
+			case "Y":
+				this.yankLine();
+				return;
+			case ";":
+				this.repeatFind(false);
+				return;
+			case ",":
+				this.repeatFind(true);
 				return;
 			case "J":
 				this.joinLines();
