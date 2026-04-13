@@ -202,6 +202,8 @@ function replaceRange(text: string, start: number, end: number, replacement = ""
 class VimModeEditor extends CustomEditor {
 	private mode: Mode = "insert";
 	private pending: Pending;
+	private count = "";
+	private pendingG = false;
 	private readonly redoStack: EditorSnapshot[] = [];
 	private unnamedRegister = "";
 
@@ -221,6 +223,14 @@ class VimModeEditor extends CustomEditor {
 
 	private clearPending(): void {
 		this.pending = undefined;
+		this.pendingG = false;
+		this.count = "";
+	}
+
+	private takeCount(defaultCount = 1): number {
+		const value = this.count ? Number.parseInt(this.count, 10) : defaultCount;
+		this.count = "";
+		return Number.isFinite(value) && value > 0 ? value : defaultCount;
 	}
 
 	private captureSnapshot(): EditorSnapshot {
@@ -355,40 +365,68 @@ class VimModeEditor extends CustomEditor {
 		this.setMode("insert");
 	}
 
-	private moveWord(direction: "next" | "prev" | "end", big: boolean): void {
+	private moveWord(direction: "next" | "prev" | "end", big: boolean, count = 1): void {
+		let target = this.getCurrentOffset();
+		for (let i = 0; i < count; i++) {
+			const text = this.getCurrentText();
+			target =
+				direction === "next"
+					? nextWordStart(text, target, big)
+					: direction === "prev"
+						? prevWordStart(text, target, big)
+						: wordEnd(text, target, big);
+			this.moveToOffset(target);
+		}
+	}
+
+	private moveLeft(count = 1): void {
+		let offset = this.getCurrentOffset();
 		const text = this.getCurrentText();
-		const offset = this.getCurrentOffset();
-		const target =
-			direction === "next"
-				? nextWordStart(text, offset, big)
-				: direction === "prev"
-					? prevWordStart(text, offset, big)
-					: wordEnd(text, offset, big);
-		this.moveToOffset(target);
+		for (let i = 0; i < count; i++) {
+			offset = Math.max(lineStart(text, offset), prevGraphemeOffset(text, offset));
+		}
+		this.moveToOffset(offset);
 	}
 
-	private moveLeft(): void {
+	private moveRight(count = 1): void {
+		let offset = this.getCurrentOffset();
 		const text = this.getCurrentText();
-		const offset = this.getCurrentOffset();
-		this.moveToOffset(Math.max(lineStart(text, offset), prevGraphemeOffset(text, offset)));
+		for (let i = 0; i < count; i++) {
+			offset = Math.min(lineLast(text, offset), nextGraphemeOffset(text, offset));
+		}
+		this.moveToOffset(offset);
 	}
 
-	private moveRight(): void {
-		const text = this.getCurrentText();
-		const offset = this.getCurrentOffset();
-		this.moveToOffset(Math.min(lineLast(text, offset), nextGraphemeOffset(text, offset)));
+	private moveUp(count = 1): void {
+		let offset = this.getCurrentOffset();
+		for (let i = 0; i < count; i++) {
+			offset = moveUp(this.getCurrentText(), offset);
+		}
+		this.moveToOffset(offset);
 	}
 
-	private moveUp(): void {
-		this.moveToOffset(moveUp(this.getCurrentText(), this.getCurrentOffset()));
-	}
-
-	private moveDown(): void {
-		this.moveToOffset(moveDown(this.getCurrentText(), this.getCurrentOffset()));
+	private moveDown(count = 1): void {
+		let offset = this.getCurrentOffset();
+		for (let i = 0; i < count; i++) {
+			offset = moveDown(this.getCurrentText(), offset);
+		}
+		this.moveToOffset(offset);
 	}
 
 	private moveLineStart(): void {
 		this.moveToOffset(lineStart(this.getCurrentText(), this.getCurrentOffset()));
+	}
+
+	private moveLineFirstNonWhitespace(count = 1): void {
+		if (count > 1) this.moveDown(count - 1);
+		this.moveToOffset(firstNonWhitespace(this.getCurrentText(), this.getCurrentOffset()));
+	}
+
+	private moveToLine(lineNumber: number): void {
+		const lines = this.getLines();
+		const lineIndex = clamp(lineNumber - 1, 0, Math.max(0, lines.length - 1));
+		const col = Math.min(this.getCursor().col, Math.max(0, (lines[lineIndex] ?? "").length - 1));
+		this.setCursor(lineIndex, Math.max(0, col));
 	}
 
 	private moveLineEnd(): void {
@@ -700,13 +738,32 @@ class VimModeEditor extends CustomEditor {
 			return;
 		}
 
+		if (this.pendingG) {
+			if (data === "g") {
+				const count = this.takeCount(1);
+				this.pendingG = false;
+				this.moveToLine(count);
+				return;
+			}
+			this.pendingG = false;
+		}
+
+		if (data >= "0" && data <= "9" && (data !== "0" || this.count.length > 0)) {
+			this.count += data;
+			return;
+		}
+
 		switch (data) {
-			case "u":
-				this.performUndo();
+			case "u": {
+				const count = this.takeCount(1);
+				for (let i = 0; i < count; i++) this.performUndo();
 				return;
-			case "\x12":
-				this.performRedo();
+			}
+			case "\x12": {
+				const count = this.takeCount(1);
+				for (let i = 0; i < count; i++) this.performRedo();
 				return;
+			}
 			case "i":
 				this.enterInsert();
 				return;
@@ -720,40 +777,55 @@ class VimModeEditor extends CustomEditor {
 				this.appendLineEnd();
 				return;
 			case "h":
-				this.moveLeft();
+				this.moveLeft(this.takeCount(1));
 				return;
 			case "j":
-				this.moveDown();
+				this.moveDown(this.takeCount(1));
 				return;
 			case "k":
-				this.moveUp();
+				this.moveUp(this.takeCount(1));
 				return;
 			case "l":
-				this.moveRight();
+				this.moveRight(this.takeCount(1));
 				return;
 			case "w":
-				this.moveWord("next", false);
+				this.moveWord("next", false, this.takeCount(1));
 				return;
 			case "b":
-				this.moveWord("prev", false);
+				this.moveWord("prev", false, this.takeCount(1));
 				return;
 			case "e":
-				this.moveWord("end", false);
+				this.moveWord("end", false, this.takeCount(1));
 				return;
 			case "W":
-				this.moveWord("next", true);
+				this.moveWord("next", true, this.takeCount(1));
 				return;
 			case "B":
-				this.moveWord("prev", true);
+				this.moveWord("prev", true, this.takeCount(1));
 				return;
 			case "E":
-				this.moveWord("end", true);
+				this.moveWord("end", true, this.takeCount(1));
 				return;
 			case "0":
 				this.moveLineStart();
+				this.count = "";
+				return;
+			case "^":
+				this.moveLineFirstNonWhitespace();
+				this.count = "";
+				return;
+			case "_":
+				this.moveLineFirstNonWhitespace(this.takeCount(1));
 				return;
 			case "$":
 				this.moveLineEnd();
+				this.count = "";
+				return;
+			case "g":
+				this.pendingG = true;
+				return;
+			case "G":
+				this.moveToLine(this.takeCount(this.getLines().length));
 				return;
 			case "o":
 				this.openLineBelow();
