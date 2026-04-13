@@ -2,7 +2,7 @@ import { copyToClipboard, CustomEditor, type ExtensionAPI, type ExtensionContext
 import { matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 
 type Mode = "normal" | "insert";
-type Pending = "d" | "c" | "y" | "f" | "F" | "t" | "T" | undefined;
+type Pending = "d" | "c" | "y" | "f" | "F" | "t" | "T" | "r" | undefined;
 type Cursor = { line: number; col: number };
 type CustomEditorArgs = ConstructorParameters<typeof CustomEditor>;
 
@@ -395,6 +395,48 @@ class VimModeEditor extends CustomEditor {
 		this.moveToOffset(lineLast(this.getCurrentText(), this.getCurrentOffset()));
 	}
 
+	private replaceUnderCursor(char: string): void {
+		this.clearPending();
+		this.edit((text, offset) => {
+			if (offset >= lineEnd(text, offset)) return undefined;
+			const end = nextGraphemeOffset(text, offset);
+			return {
+				text: replaceRange(text, offset, end, char),
+				cursorOffset: offset,
+			};
+		});
+	}
+
+	private deleteToLineEnd(change: boolean): void {
+		this.clearPending();
+		this.edit((text, offset) => {
+			const end = lineEnd(text, offset);
+			if (offset > end) return undefined;
+			const deleteEnd = offset === end && end < text.length ? end + 1 : end;
+			if (deleteEnd <= offset) return undefined;
+			this.writeRegister(text.slice(offset, deleteEnd));
+			return {
+				text: replaceRange(text, offset, deleteEnd),
+				cursorOffset: offset,
+			};
+		});
+		if (change) this.setMode("insert");
+	}
+
+	private substituteChar(): void {
+		this.clearPending();
+		this.edit((text, offset) => {
+			if (offset >= lineEnd(text, offset)) return undefined;
+			const end = nextGraphemeOffset(text, offset);
+			this.writeRegister(text.slice(offset, end));
+			return {
+				text: replaceRange(text, offset, end),
+				cursorOffset: offset,
+			};
+		});
+		this.setMode("insert");
+	}
+
 	private deleteUnderCursor(): void {
 		this.clearPending();
 		this.edit((text, offset) => {
@@ -575,6 +617,13 @@ class VimModeEditor extends CustomEditor {
 		}
 
 		switch (this.pending) {
+			case "r": {
+				if (data.length === 1 && data.charCodeAt(0) >= 32) {
+					this.replaceUnderCursor(data);
+					return true;
+				}
+				break;
+			}
 			case "y": {
 				if (data === "y") {
 					this.yankLine();
@@ -714,6 +763,18 @@ class VimModeEditor extends CustomEditor {
 				return;
 			case "x":
 				this.deleteUnderCursor();
+				return;
+			case "s":
+				this.substituteChar();
+				return;
+			case "D":
+				this.deleteToLineEnd(false);
+				return;
+			case "C":
+				this.deleteToLineEnd(true);
+				return;
+			case "r":
+				this.pending = "r";
 				return;
 			case "p":
 				this.put(true);
