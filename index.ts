@@ -582,60 +582,50 @@ class VimModeEditor extends CustomEditor {
 		this.applyRange(offset, endOffset, change);
 	}
 
-	private deleteLine(): void {
+	private deleteLine(count = 1, direction: -1 | 1 | 0 = 0): void {
 		this.clearPending();
 		this.edit((text, offset) => {
 			if (text.length === 0) return undefined;
-			const start = lineStart(text, offset);
-			const end = lineEnd(text, offset);
-			this.writeRegister(text.slice(start, Math.min(end + 1, text.length)));
-
-			if (end < text.length) {
-				return {
-					text: replaceRange(text, start, end + 1),
-					cursorOffset: start,
-				};
-			}
-
-			if (start > 0) {
-				const nextText = replaceRange(text, start - 1, end);
-				return {
-					text: nextText,
-					cursorOffset: lineStart(nextText, start - 1),
-				};
-			}
-
-			return { text: "", cursorOffset: 0 };
+			const { start, end } = this.lineBlockRange(count, direction);
+			this.writeRegister(text.slice(start, end));
+			const nextText = replaceRange(text, start, end);
+			return {
+				text: nextText,
+				cursorOffset: Math.min(start, nextText.length),
+			};
 		});
 	}
 
-	private substituteLine(): void {
-		this.clearPending();
-		const text = this.getCurrentText();
-		const offset = this.getCurrentOffset();
-		const start = lineStart(text, offset);
-		const end = lineEnd(text, offset);
-
-		if (end > start) {
-			this.writeRegister(text.slice(start, end));
-			this.edit(() => ({
-				text: replaceRange(text, start, end),
-				cursorOffset: start,
-			}));
-		} else {
-			this.moveToOffset(start);
-		}
-
+	private substituteLine(count = 1): void {
+		this.deleteLine(count);
 		this.setMode("insert");
 	}
 
-	private yankLine(): void {
-		this.clearPending();
+	private lineBlockRange(count: number, direction: -1 | 1 | 0): { start: number; end: number } {
 		const text = this.getCurrentText();
 		const offset = this.getCurrentOffset();
-		const start = lineStart(text, offset);
-		const end = lineEnd(text, offset);
-		this.writeRegister(text.slice(start, Math.min(end + 1, text.length)));
+		let start = lineStart(text, offset);
+		let end = lineEnd(text, offset);
+		if (direction >= 0) {
+			for (let i = 1; i < count; i++) {
+				if (end >= text.length) break;
+				end = lineEnd(text, end + 1);
+			}
+			end = Math.min(end + 1, text.length);
+		} else {
+			for (let i = 1; i < count; i++) {
+				if (start === 0) break;
+				start = lineStart(text, start - 1);
+			}
+			end = Math.min(lineEnd(text, offset) + 1, text.length);
+		}
+		return { start, end };
+	}
+
+	private yankLine(count = 1): void {
+		this.clearPending();
+		const { start, end } = this.lineBlockRange(count, 0);
+		this.writeRegister(this.getCurrentText().slice(start, end));
 	}
 
 	private put(after: boolean, count = 1): void {
@@ -792,9 +782,10 @@ class VimModeEditor extends CustomEditor {
 					return true;
 				}
 				if (data === this.pending) {
-					if (this.pending === "y") this.yankLine();
-					else if (this.pending === "d") this.deleteLine();
-					else this.substituteLine();
+					const count = this.takeCount(1);
+					if (this.pending === "y") this.yankLine(count);
+					else if (this.pending === "d") this.deleteLine(count);
+					else this.substituteLine(count);
 					return true;
 				}
 				if (data === "w") {
@@ -810,6 +801,23 @@ class VimModeEditor extends CustomEditor {
 				if (data === "$") return this.applyPendingOperator(lineEnd(this.getCurrentText(), this.getCurrentOffset()));
 				if (data === "0") return this.applyPendingOperator(lineStart(this.getCurrentText(), this.getCurrentOffset()));
 				if (data === "^") return this.applyPendingOperator(firstNonWhitespace(this.getCurrentText(), this.getCurrentOffset()));
+				if (data === "j") {
+					const count = this.takeCount(1);
+					if (this.pending === "y") this.yankLine(count + 1);
+					else if (this.pending === "d") this.deleteLine(count + 1, 1);
+					else this.substituteLine(count + 1);
+					return true;
+				}
+				if (data === "k") {
+					const count = this.takeCount(1);
+					if (this.pending === "y") {
+						const { start, end } = this.lineBlockRange(count + 1, -1);
+						this.writeRegister(this.getCurrentText().slice(start, end));
+						this.clearPending();
+					} else if (this.pending === "d") this.deleteLine(count + 1, -1);
+					else this.deleteLine(count + 1, -1), this.setMode("insert");
+					return true;
+				}
 				break;
 			}
 			case "f":
@@ -1008,7 +1016,7 @@ class VimModeEditor extends CustomEditor {
 				this.put(false, this.takeCount(1));
 				return;
 			case "Y":
-				this.yankLine();
+				this.yankLine(this.takeCount(1));
 				return;
 			case ";":
 				this.repeatFind(false);
@@ -1020,7 +1028,7 @@ class VimModeEditor extends CustomEditor {
 				this.joinLines();
 				return;
 			case "S":
-				this.substituteLine();
+				this.substituteLine(this.takeCount(1));
 				return;
 			case "d":
 				this.pending = "d";
