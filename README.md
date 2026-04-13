@@ -34,6 +34,7 @@ Toggle with:
 - `{`, `}`
 - `o`, `O`
 - `x`, `s`, `r`, `D`, `C`, `J`, `S`
+- counts for `x`, `r`, `p`, `P`, motions, undo, redo
 - `dd`, `dw`, `de`, `db`, `dW`, `dE`, `dB`
 - `cc`, `cw`, `ce`, `cb`, `cW`, `cE`, `cB`
 - `yy`, `yw`, `ye`, `yb`, `yW`, `yE`, `yB`
