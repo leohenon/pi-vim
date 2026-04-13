@@ -1,4 +1,4 @@
-import { copyToClipboard, CustomEditor, type ExtensionAPI, type ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { CustomEditor, type ExtensionAPI, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 
 type Mode = "normal" | "insert" | "visual" | "visual-line";
@@ -360,7 +360,6 @@ class VimModeEditor extends CustomEditor {
 	private writeRegister(text: string, type: "char" | "line" = "char"): void {
 		this.unnamedRegister = text;
 		this.unnamedRegisterType = type;
-		void copyToClipboard(text).catch(() => {});
 	}
 
 	private wordObjectRange(around: boolean): { start: number; end: number } | undefined {
