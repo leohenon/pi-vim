@@ -1,6 +1,6 @@
 # pi-vim
 
-A Vim-mode editor extension for [pi](https://github.com/badlogic/pi-mono).
+Vim mode for [pi](https://github.com/badlogic/pi-mono).
 
 ## Install
 
@@ -16,38 +16,97 @@ Toggle with:
 /vim-mode
 ```
 
-## Keybindings
-
-### Insert mode
+## Insert mode
 
 - `Esc` / `Ctrl-[` → normal mode
-- `Shift+Alt+A` → end of line
-- `Shift+Alt+I` → start of line
+- `Shift+Alt+A` → line end
+- `Shift+Alt+I` → line start
 - `Alt+o` → open line below
 - `Alt+Shift+O` → open line above
 
-### Normal mode
+## Normal mode
 
-- `i` → insert
-- `a`, `A`, `I`
+### Mode
+
+- `i`, `a`, `I`, `A`
+- `o`, `O`
+- `v` → visual
+- `V` → visual line
+
+### Motions
+
 - `h`, `j`, `k`, `l`
 - `w`, `b`, `e`
 - `W`, `B`, `E`
 - `0`, `^`, `_`, `$`
 - `gg`, `G`
 - `{`, `}`
-- `o`, `O`
-- `x`, `s`, `r`, `D`, `C`, `J`, `S`
-- counts for `x`, `r`, `p`, `P`, motions, undo, redo
-- `dd`, `dw`, `de`, `db`, `dW`, `dE`, `dB`, `d_`, `dG`, `d{count}j`, `d{count}k`
-- `cc`, `cw`, `ce`, `cb`, `cW`, `cE`, `cB`, `c_`
-- `yy`, `Y`, `yw`, `ye`, `yb`, `yW`, `yE`, `yB`, `y_`, `yG`, `y{count}j`, `y{count}k`
-- `yy`, `Y`, `p`, `P`
-- `f`, `F`, `t`, `T`, `;`, `,`
-- `u` / `Ctrl-_` → undo
-- `Ctrl-r` → redo
+- `f`, `F`, `t`, `T`
+- `;`, `,`
+- counts on motions
 
-App-level pi keybindings still work through `CustomEditor`.
+### Delete
+
+- `dd`, `dw`, `de`, `db`, `dW`, `dE`, `dB`
+- `d0`, `d^`, `d$`, `d_`, `dG`
+- `d{count}j`, `d{count}k`
+- `df`, `dF`, `dt`, `dT`
+- `diw`, `daw`
+
+### Change
+
+- `cc`, `cw`, `ce`, `cb`, `cW`, `cE`, `cB`
+- `c0`, `c^`, `c$`, `c_`
+- `cf`, `cF`, `ct`, `cT`
+- `ciw`, `caw`
+
+### Yank
+
+- `yy`, `Y`
+- `yw`, `ye`, `yb`, `yW`, `yE`, `yB`
+- `y0`, `y^`, `y$`, `y_`, `yG`
+- `y{count}j`, `y{count}k`
+- `yf`
+- `yiw`, `yaw`
+
+### Edit
+
+- `x`, `s`, `S`
+- `r{char}`
+- `D`, `C`
+- counts on `x`, `r`
+
+### Put
+
+- `p`, `P`
+- counts on `p`, `P`
+
+### Undo
+
+- `u`, `Ctrl-_`
+- `Ctrl-r`
+- counts on undo/redo
+
+## Visual mode
+
+### Characterwise
+
+- `v` enters visual mode
+- `Esc` exits to normal mode
+- `d` / `x` delete selection
+- `y` yank selection
+- `c` change selection
+- `p`, `P` replace selection with unnamed register
+
+### Linewise
+
+- `V` enters visual line mode
+- `j`, `k` extend by full lines
+- `Esc` exits to normal mode
+- `d` / `x` delete selected lines
+- `y` yank selected lines
+- `c` change selected lines
+- `p`, `P` replace selected lines
 
 ## Files
 

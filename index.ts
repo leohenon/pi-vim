@@ -1,7 +1,7 @@
 import { copyToClipboard, CustomEditor, type ExtensionAPI, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 
-type Mode = "normal" | "insert";
+type Mode = "normal" | "insert" | "visual" | "visual-line";
 type Pending = "d" | "c" | "y" | "f" | "F" | "t" | "T" | "r" | undefined;
 type LastFind = { char: string; forward: boolean; till: boolean } | undefined;
 type Cursor = { line: number; col: number };
@@ -18,6 +18,10 @@ type InternalEditor = {
 	preferredVisualCol?: number | null;
 	historyIndex?: number;
 	lastAction?: string | null;
+	paddingX?: number;
+	scrollOffset?: number;
+	borderColor?: (text: string) => string;
+	layoutText?: (contentWidth: number) => Array<{ text: string; hasCursor: boolean; cursorPos?: number }>;
 };
 
 type EditorSnapshot = {
@@ -231,6 +235,7 @@ class VimModeEditor extends CustomEditor {
 	private pending: Pending;
 	private pendingTextObject?: "i" | "a";
 	private pendingFindOp?: { op: "d" | "c" | "y"; motion: "f" | "F" | "t" | "T"; count: number };
+	private visualAnchor?: number;
 	private count = "";
 	private pendingG = false;
 	private lastFind: LastFind;
@@ -257,6 +262,21 @@ class VimModeEditor extends CustomEditor {
 		this.pendingFindOp = undefined;
 		this.pendingG = false;
 		this.count = "";
+	}
+
+	private getVisualRange(): { start: number; end: number; linewise: boolean } | undefined {
+		if (this.visualAnchor === undefined) return undefined;
+		const current = this.getCurrentOffset();
+		if (this.mode === "visual-line") {
+			const start = Math.min(lineStart(this.getCurrentText(), this.visualAnchor), lineStart(this.getCurrentText(), current));
+			const end = Math.max(lineEnd(this.getCurrentText(), this.visualAnchor), lineEnd(this.getCurrentText(), current));
+			return { start, end: Math.min(end + 1, this.getCurrentText().length), linewise: true };
+		}
+		return {
+			start: Math.min(this.visualAnchor, current),
+			end: Math.max(this.visualAnchor, current) + 1,
+			linewise: false,
+		};
 	}
 
 	private takeCount(defaultCount = 1): number {
@@ -312,6 +332,7 @@ class VimModeEditor extends CustomEditor {
 	private setMode(mode: Mode): void {
 		if (this.mode === mode) return;
 		this.mode = mode;
+		if (mode !== "visual" && mode !== "visual-line") this.visualAnchor = undefined;
 		this.onModeChange(mode);
 		this.tui.requestRender();
 	}
@@ -333,6 +354,52 @@ class VimModeEditor extends CustomEditor {
 	private moveToOffset(offset: number): void {
 		const cursor = offsetToCursor(this.getLines(), offset);
 		this.setCursor(cursor.line, cursor.col);
+	}
+
+	private enterVisual(linewise: boolean): void {
+		this.clearPending();
+		this.visualAnchor = this.getCurrentOffset();
+		this.setMode(linewise ? "visual-line" : "visual");
+	}
+
+	private exitVisual(): void {
+		const range = this.getVisualRange();
+		this.setMode("normal");
+		if (range) this.moveToOffset(range.start);
+	}
+
+	private applyVisual(action: "delete" | "change" | "yank" | "put"): void {
+		const range = this.getVisualRange();
+		if (!range) {
+			this.setMode("normal");
+			return;
+		}
+		const text = this.getCurrentText();
+		const selected = text.slice(range.start, range.end);
+		if (action === "yank") {
+			this.writeRegister(selected);
+			this.setMode("normal");
+			this.moveToOffset(range.start);
+			return;
+		}
+		if (action === "put") {
+			if (!this.unnamedRegister) {
+				this.setMode("normal");
+				return;
+			}
+			this.edit(() => ({
+				text: replaceRange(text, range.start, range.end, this.unnamedRegister),
+				cursorOffset: Math.max(range.start, range.start + this.unnamedRegister.length - 1),
+			}));
+			this.setMode("normal");
+			return;
+		}
+		this.writeRegister(selected);
+		this.edit(() => ({
+			text: replaceRange(text, range.start, range.end),
+			cursorOffset: range.start,
+		}));
+		this.setMode(action === "change" ? "insert" : "normal");
 	}
 
 	private normalizeCursorForNormalMode(): void {
@@ -726,6 +793,85 @@ class VimModeEditor extends CustomEditor {
 		this.restoreSnapshot(snapshot);
 	}
 
+	override render(width: number): string[] {
+		const range = this.getVisualRange();
+		if (!range) return super.render(width);
+
+		const editor = this.editor;
+		const paddingX = Math.min(editor.paddingX ?? 0, Math.max(0, Math.floor((width - 1) / 2)));
+		const contentWidth = Math.max(1, width - paddingX * 2);
+		const layoutWidth = Math.max(1, contentWidth - (paddingX ? 0 : 1));
+		const layout = editor.layoutText?.(layoutWidth);
+		if (!layout) return super.render(width);
+
+		const terminalRows = this.tui.terminal.rows;
+		const maxVisibleLines = Math.max(5, Math.floor(terminalRows * 0.3));
+		const selectedBg = (s: string) => `\x1b[7m${s}\x1b[0m`;
+		const horizontal = (editor.borderColor ?? ((s: string) => s))("─");
+		const leftPadding = " ".repeat(paddingX);
+		const rightPadding = leftPadding;
+		const text = this.getCurrentText();
+
+		const mapped = layout.map((line) => {
+			const plain = line.text;
+			const start = text.indexOf(plain);
+			return { ...line, absStart: start, absEnd: start === -1 ? -1 : start + plain.length };
+		});
+
+		let cursorLineIndex = mapped.findIndex((line) => line.hasCursor);
+		if (cursorLineIndex === -1) cursorLineIndex = 0;
+		editor.scrollOffset = editor.scrollOffset ?? 0;
+		if (cursorLineIndex < editor.scrollOffset) editor.scrollOffset = cursorLineIndex;
+		else if (cursorLineIndex >= editor.scrollOffset + maxVisibleLines) editor.scrollOffset = cursorLineIndex - maxVisibleLines + 1;
+		const maxScrollOffset = Math.max(0, mapped.length - maxVisibleLines);
+		editor.scrollOffset = Math.max(0, Math.min(editor.scrollOffset, maxScrollOffset));
+		const visibleLines = mapped.slice(editor.scrollOffset, editor.scrollOffset + maxVisibleLines);
+
+		const result: string[] = [];
+		if (editor.scrollOffset > 0) {
+			const indicator = `─── ↑ ${editor.scrollOffset} more `;
+			result.push(truncateToWidth((editor.borderColor ?? ((s: string) => s))(indicator + "─".repeat(Math.max(0, width - visibleWidth(indicator)))), width, ""));
+		} else {
+			result.push(truncateToWidth(horizontal.repeat(width), width, ""));
+		}
+
+		for (const line of visibleLines) {
+			let displayText = line.text;
+			if (line.absStart !== -1) {
+				const overlapStart = Math.max(range.start, line.absStart);
+				const overlapEnd = Math.min(range.end, line.absEnd);
+				if (overlapEnd > overlapStart) {
+					const localStart = overlapStart - line.absStart;
+					const localEnd = overlapEnd - line.absStart;
+					displayText = `${displayText.slice(0, localStart)}${selectedBg(displayText.slice(localStart, localEnd) || " ")}${displayText.slice(localEnd)}`;
+				}
+			}
+			let lineVisibleWidth = visibleWidth(line.text);
+			if ((this.mode !== "visual" && this.mode !== "visual-line") && line.hasCursor && line.cursorPos !== undefined) {
+				const before = displayText.slice(0, line.cursorPos);
+				const after = displayText.slice(line.cursorPos);
+				if (after.length > 0) {
+					const first = [...graphemeSegmenter.segment(after)][0]?.segment || "";
+					displayText = before + `\x1b[7m${first}\x1b[0m` + after.slice(first.length);
+				} else {
+					displayText = before + "\x1b[7m \x1b[0m";
+					lineVisibleWidth += 1;
+				}
+			}
+			const padding = " ".repeat(Math.max(0, contentWidth - lineVisibleWidth));
+			result.push(truncateToWidth(`${leftPadding}${displayText}${padding}${rightPadding}`, width, ""));
+		}
+
+		const linesBelow = mapped.length - (editor.scrollOffset + visibleLines.length);
+		if (linesBelow > 0) {
+			const indicator = `─── ↓ ${linesBelow} more `;
+			result.push(truncateToWidth((editor.borderColor ?? ((s: string) => s))(indicator + "─".repeat(Math.max(0, width - visibleWidth(indicator)))), width, ""));
+		} else {
+			result.push(truncateToWidth(horizontal.repeat(width), width, ""));
+		}
+		return result;
+	}
+
 	private applyPendingOperator(target: number, inclusive = false): boolean {
 		const offset = this.getCurrentOffset();
 		const change = this.pending === "c";
@@ -877,7 +1023,9 @@ class VimModeEditor extends CustomEditor {
 
 	handleInput(data: string): void {
 		if (this.isInterruptKey(data)) {
-			if (this.mode === "insert") {
+			if (this.mode === "visual" || this.mode === "visual-line") {
+				this.exitVisual();
+			} else if (this.mode === "insert") {
 				if (this.isShowingAutocomplete()) {
 					super.handleInput(data);
 				}
@@ -914,6 +1062,33 @@ class VimModeEditor extends CustomEditor {
 			return;
 		}
 
+		if (this.mode === "visual" || this.mode === "visual-line") {
+			switch (data) {
+				case "v":
+					if (this.mode === "visual") this.exitVisual();
+					else this.enterVisual(false);
+					return;
+				case "V":
+					if (this.mode === "visual-line") this.exitVisual();
+					else this.enterVisual(true);
+					return;
+				case "d":
+				case "x":
+					this.applyVisual("delete");
+					return;
+				case "c":
+					this.applyVisual("change");
+					return;
+				case "y":
+					this.applyVisual("yank");
+					return;
+				case "p":
+				case "P":
+					this.applyVisual("put");
+					return;
+			}
+		}
+
 		if (this.pendingFindOp) {
 			if (this.handlePendingFindOp(data)) return;
 		}
@@ -942,6 +1117,12 @@ class VimModeEditor extends CustomEditor {
 		}
 
 		switch (data) {
+			case "v":
+				this.enterVisual(false);
+				return;
+			case "V":
+				this.enterVisual(true);
+				return;
 			case "u":
 			case "\x1f": {
 				const count = this.takeCount(1);
@@ -1153,7 +1334,14 @@ export default function (pi: ExtensionAPI) {
 					const sessionName = ctx.sessionManager.getSessionName();
 					if (sessionName) pwd = `${pwd} • ${sessionName}`;
 
-					const prefix = mode === "insert" ? theme.fg("muted", "-- INSERT -- ") : "";
+					const prefix =
+						mode === "insert"
+							? theme.fg("muted", "-- INSERT -- ")
+							: mode === "visual"
+								? theme.fg("accent", "-- VISUAL -- ")
+								: mode === "visual-line"
+									? theme.fg("accent", "-- VISUAL LINE -- ")
+									: "";
 					const pwdLine = truncateToWidth(prefix + theme.fg("dim", pwd), width, theme.fg("dim", "..."));
 
 					const statsParts: string[] = [];
