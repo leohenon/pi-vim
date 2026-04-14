@@ -279,6 +279,11 @@ class VimModeEditor extends CustomEditor {
 		} catch {}
 	}
 
+	private resetTerminalCursor(): void {
+		(this.tui as unknown as { setShowHardwareCursor(enabled: boolean): void }).setShowHardwareCursor(false);
+		this.writeCursorShape("\x1b[2 q");
+	}
+
 	private updateCursorStyle(): void {
 		const textEntry = this.mode === "insert" || this.mode === "replace";
 		const sequence = this.mode === "replace" ? "\x1b[3 q" : textEntry ? "\x1b[5 q" : "\x1b[2 q";
@@ -1233,6 +1238,13 @@ class VimModeEditor extends CustomEditor {
 	}
 
 	handleInput(data: string): void {
+		if ((this as unknown as { keybindings: { matches(data: string, action: string): boolean } }).keybindings.matches(data, "app.editor.external")) {
+			this.resetTerminalCursor();
+			super.handleInput(data);
+			setTimeout(() => this.updateCursorStyle(), 0);
+			return;
+		}
+
 		if (this.isInterruptKey(data)) {
 			if (this.mode === "visual" || this.mode === "visual-line") {
 				this.exitVisual();
