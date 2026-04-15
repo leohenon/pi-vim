@@ -1,6 +1,6 @@
 # pi-vim
 
-[![npm](https://img.shields.io/npm/v/%40leohenon%2Fpi-vim?style=flat-square&logo=npm&logoColor=white&label=npm&color=f59e0b)](https://www.npmjs.com/package/@leohenon/pi-vim) [![downloads](https://img.shields.io/npm/dm/%40leohenon%2Fpi-vim?style=flat-square&logo=npm&logoColor=white&label=downloads&color=f59e0b)](https://www.npmjs.com/package/@leohenon/pi-vim) [![node](https://img.shields.io/badge/node-%3E%3D18-f59e0b?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org)
+[![npm](https://img.shields.io/npm/v/%40leohenon%2Fpi-vim?style=flat-square&logo=npm&logoColor=white&label=npm&color=f59e0b)](https://www.npmjs.com/package/@leohenon/pi-vim) [![node](https://img.shields.io/badge/node-%3E%3D18-f59e0b?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org)
 
 Vim mode for [pi](https://github.com/badlogic/pi-mono).
 
