@@ -90,6 +90,7 @@ Toggle with:
 
 - `p`, `P`
 - counts on `p`, `P`
+- puts read from the system clipboard
 
 ### Undo
 
@@ -105,8 +106,9 @@ Toggle with:
 - `Esc` exits to normal mode
 - `d` / `x` delete selection
 - `y` yank selection
+- editor copy shortcut yanks selection
 - `c` change selection
-- `p`, `P` replace selection with unnamed register
+- `p`, `P` replace selection with system clipboard
 
 ### Linewise
 
@@ -116,10 +118,10 @@ Toggle with:
 - `d` / `x` delete selected lines
 - `y` yank selected lines
 - `c` change selected lines
-- `p`, `P` replace selected lines
+- `p`, `P` replace selected lines from the system clipboard
 
 > [!NOTE]
-> yanks and puts use an internal unnamed register, not the system clipboard
+> yanks sync the system clipboard, puts read from it, and delete/change operations do not overwrite it
 
 ## Files
 

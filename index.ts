@@ -1,4 +1,5 @@
-import { CustomEditor, type ExtensionAPI, type ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { execFileSync } from "node:child_process";
+import { copyToClipboard, CustomEditor, type ExtensionAPI, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 
 type Mode = "normal" | "insert" | "replace" | "visual" | "visual-line";
@@ -52,6 +53,38 @@ function formatTokens(count: number): string {
 
 function isWord(char: string | undefined): boolean {
 	return !!char && /[A-Za-z0-9_]/.test(char);
+}
+
+function runClipboardCommand(command: string, args: readonly string[]): string | undefined {
+	try {
+		return execFileSync(command, args, {
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "ignore"],
+			timeout: 2000,
+		}).replace(/\r\n/g, "\n");
+	} catch {
+		return undefined;
+	}
+}
+
+function readSystemClipboardText(): string | undefined {
+	if (process.platform === "darwin") return runClipboardCommand("pbpaste", []);
+	if (process.platform === "win32") {
+		return runClipboardCommand("powershell", ["-NoProfile", "-Command", "Get-Clipboard -Raw"]);
+	}
+	if (process.env.TERMUX_VERSION) {
+		const text = runClipboardCommand("termux-clipboard-get", []);
+		if (text !== undefined) return text;
+	}
+	for (const [command, args] of [
+		["wl-paste", ["-n"]],
+		["xclip", ["-selection", "clipboard", "-o"]],
+		["xsel", ["--clipboard", "--output"]],
+	] as const) {
+		const text = runClipboardCommand(command, args);
+		if (text !== undefined) return text;
+	}
+	return undefined;
 }
 
 function isBigWord(char: string | undefined): boolean {
@@ -250,6 +283,8 @@ class VimModeEditor extends CustomEditor {
 		theme: CustomEditorArgs[1],
 		keybindings: CustomEditorArgs[2],
 		private onStatusChange: (mode: Mode, pending: string) => void,
+		private onYank: (text: string) => void,
+		private getClipboardText: () => string | undefined,
 	) {
 		super(tui, theme, keybindings);
 		this.emitStatus();
@@ -268,6 +303,10 @@ class VimModeEditor extends CustomEditor {
 		if (this.pendingG) return `g${count}`;
 		if (count) return count;
 		return "";
+	}
+
+	private matchesAction(data: string, action: string): boolean {
+		return (this as unknown as { keybindings: { matches(data: string, action: string): boolean } }).keybindings.matches(data, action);
 	}
 
 	private writeCursorShape(sequence: string): void {
@@ -365,6 +404,20 @@ class VimModeEditor extends CustomEditor {
 	private writeRegister(text: string, type: "char" | "line" = "char"): void {
 		this.unnamedRegister = text;
 		this.unnamedRegisterType = type;
+	}
+
+	private writeYank(text: string, type: "char" | "line" = "char"): void {
+		this.writeRegister(text, type);
+		this.onYank(text);
+	}
+
+	private readClipboardRegister(): { text: string; type: "char" | "line" } | undefined {
+		const text = this.getClipboardText();
+		if (!text) return undefined;
+		return {
+			text,
+			type: text === this.unnamedRegister ? this.unnamedRegisterType : "char",
+		};
 	}
 
 	private wordObjectRange(around: boolean): { start: number; end: number } | undefined {
@@ -508,24 +561,24 @@ class VimModeEditor extends CustomEditor {
 		const text = this.getCurrentText();
 		const selected = text.slice(range.start, range.end);
 		if (action === "yank") {
-			this.writeRegister(selected, range.linewise ? "line" : "char");
+			this.writeYank(selected, range.linewise ? "line" : "char");
 			this.setMode("normal");
 			this.moveToOffset(range.start);
 			return;
 		}
 		if (action === "put") {
-			if (!this.unnamedRegister) {
+			const register = this.readClipboardRegister();
+			if (!register) {
 				this.setMode("normal");
 				return;
 			}
 			this.edit(() => ({
-				text: replaceRange(text, range.start, range.end, this.unnamedRegister),
-				cursorOffset: Math.max(range.start, range.start + this.unnamedRegister.length - 1),
+				text: replaceRange(text, range.start, range.end, register.text),
+				cursorOffset: Math.max(range.start, range.start + register.text.length - 1),
 			}));
 			this.setMode("normal");
 			return;
 		}
-		this.writeRegister(selected, range.linewise ? "line" : "char");
 		this.edit(() => ({
 			text: replaceRange(text, range.start, range.end),
 			cursorOffset: range.start,
@@ -731,7 +784,6 @@ class VimModeEditor extends CustomEditor {
 			if (offset > end) return undefined;
 			const deleteEnd = offset === end && end < text.length ? end + 1 : end;
 			if (deleteEnd <= offset) return undefined;
-			this.writeRegister(text.slice(offset, deleteEnd));
 			return {
 				text: replaceRange(text, offset, deleteEnd),
 				cursorOffset: offset,
@@ -745,7 +797,6 @@ class VimModeEditor extends CustomEditor {
 		this.edit((text, offset) => {
 			if (offset >= lineEnd(text, offset)) return undefined;
 			const end = nextGraphemeOffset(text, offset);
-			this.writeRegister(text.slice(offset, end));
 			return {
 				text: replaceRange(text, offset, end),
 				cursorOffset: offset,
@@ -787,7 +838,6 @@ class VimModeEditor extends CustomEditor {
 					break;
 				}
 			}
-			this.writeRegister(text.slice(offset, end));
 			return {
 				text: replaceRange(text, offset, end),
 				cursorOffset: offset,
@@ -801,7 +851,8 @@ class VimModeEditor extends CustomEditor {
 		const to = Math.max(start, end);
 		if (to <= from) return;
 		const text = this.getCurrentText();
-		this.writeRegister(text.slice(from, to), "char");
+		const selected = text.slice(from, to);
+		if (yank) this.writeYank(selected, "char");
 		if (yank) {
 			this.flashSelection(from, to, false);
 			this.moveToOffset(start <= end ? from : Math.max(from, to - 1));
@@ -839,7 +890,6 @@ class VimModeEditor extends CustomEditor {
 		this.edit((text, offset) => {
 			if (text.length === 0) return undefined;
 			const { start, end } = this.lineBlockRange(count, direction);
-			this.writeRegister(text.slice(start, end), "line");
 			const nextText = replaceRange(text, start, end);
 			return {
 				text: nextText,
@@ -877,30 +927,31 @@ class VimModeEditor extends CustomEditor {
 	private yankLine(count = 1): void {
 		this.clearPending();
 		const { start, end } = this.lineBlockRange(count, 0);
-		this.writeRegister(this.getCurrentText().slice(start, end), "line");
+		this.writeYank(this.getCurrentText().slice(start, end), "line");
 		this.flashSelection(start, end, true);
 	}
 
 	private put(after: boolean, count = 1): void {
 		this.clearPending();
-		if (!this.unnamedRegister) return;
-		const register = this.unnamedRegister.repeat(Math.max(1, count));
-		const linewise = this.unnamedRegisterType === "line";
-		this.edit((text, offset) => {
+		const register = this.readClipboardRegister();
+		if (!register) return;
+		const text = register.text.repeat(Math.max(1, count));
+		const linewise = register.type === "line";
+		this.edit((currentText, offset) => {
 			if (linewise) {
-				const currentLineEnd = lineEnd(text, offset);
-				const insertAt = after ? currentLineEnd + (currentLineEnd < text.length ? 1 : 0) : lineStart(text, offset);
-				const needsLeadingNewline = after && insertAt === text.length && text.length > 0 && text[text.length - 1] !== "\n";
-				const insertion = needsLeadingNewline ? `\n${register}` : register;
-				const nextText = replaceRange(text, insertAt, insertAt, insertion);
+				const currentLineEnd = lineEnd(currentText, offset);
+				const insertAt = after ? currentLineEnd + (currentLineEnd < currentText.length ? 1 : 0) : lineStart(currentText, offset);
+				const needsLeadingNewline = after && insertAt === currentText.length && currentText.length > 0 && currentText[currentText.length - 1] !== "\n";
+				const insertion = needsLeadingNewline ? `\n${text}` : text;
+				const nextText = replaceRange(currentText, insertAt, insertAt, insertion);
 				return { text: nextText, cursorOffset: insertAt + (needsLeadingNewline ? 1 : 0) };
 			}
 
-			const insertAt = after ? Math.min(nextGraphemeOffset(text, offset), text.length) : offset;
-			const nextText = replaceRange(text, insertAt, insertAt, register);
+			const insertAt = after ? Math.min(nextGraphemeOffset(currentText, offset), currentText.length) : offset;
+			const nextText = replaceRange(currentText, insertAt, insertAt, text);
 			return {
 				text: nextText,
-				cursorOffset: Math.max(insertAt, insertAt + register.length - 1),
+				cursorOffset: Math.max(insertAt, insertAt + text.length - 1),
 			};
 		});
 	}
@@ -958,10 +1009,7 @@ class VimModeEditor extends CustomEditor {
 	}
 
 	private isInterruptKey(data: string): boolean {
-		return (this as unknown as { keybindings: { matches(data: string, action: string): boolean } }).keybindings.matches(
-			data,
-			"app.interrupt",
-		) || matchesKey(data, "escape") || matchesKey(data, "ctrl+[");
+		return this.matchesAction(data, "app.interrupt") || matchesKey(data, "escape") || matchesKey(data, "ctrl+[");
 	}
 
 	private performUndo(): void {
@@ -1183,9 +1231,11 @@ class VimModeEditor extends CustomEditor {
 					const offset = this.getCurrentOffset();
 					const start = lineStart(this.getCurrentText(), offset);
 					const end = this.getCurrentText().length;
+					const pending = this.pending;
 					this.clearPending();
-					this.writeRegister(this.getCurrentText().slice(start, end), "line");
-					if (this.pending === "y") return true;
+					const selected = this.getCurrentText().slice(start, end);
+					if (pending === "y") this.writeYank(selected, "line");
+					if (pending === "y") return true;
 					this.edit(() => ({ text: replaceRange(this.getCurrentText(), start, end), cursorOffset: start }));
 					if (this.pending === "c") this.setMode("insert");
 					return true;
@@ -1201,7 +1251,7 @@ class VimModeEditor extends CustomEditor {
 					const count = this.takeCount(1);
 					if (this.pending === "y") {
 						const { start, end } = this.lineBlockRange(count + 1, -1);
-						this.writeRegister(this.getCurrentText().slice(start, end), "line");
+						this.writeYank(this.getCurrentText().slice(start, end), "line");
 						this.clearPending();
 					} else if (this.pending === "d") this.deleteLine(count + 1, -1);
 					else this.deleteLine(count + 1, -1), this.setMode("insert");
@@ -1238,7 +1288,7 @@ class VimModeEditor extends CustomEditor {
 	}
 
 	handleInput(data: string): void {
-		if ((this as unknown as { keybindings: { matches(data: string, action: string): boolean } }).keybindings.matches(data, "app.editor.external")) {
+		if (this.matchesAction(data, "app.editor.external")) {
 			this.resetTerminalCursor();
 			super.handleInput(data);
 			setTimeout(() => this.updateCursorStyle(), 0);
@@ -1290,6 +1340,10 @@ class VimModeEditor extends CustomEditor {
 		}
 
 		if (this.mode === "visual" || this.mode === "visual-line") {
+			if (this.matchesAction(data, "tui.input.copy")) {
+				this.applyVisual("yank");
+				return;
+			}
 			switch (data) {
 				case "v":
 					if (this.mode === "visual") this.exitVisual();
@@ -1700,10 +1754,19 @@ export default function (pi: ExtensionAPI) {
 
 		ctx.ui.setEditorComponent(
 			(tui, theme, keybindings) =>
-				new VimModeEditor(tui, theme, keybindings, (nextMode, nextPending) => {
-					mode = nextMode;
-					pendingStatus = nextPending;
-				}),
+				new VimModeEditor(
+					tui,
+					theme,
+					keybindings,
+					(nextMode, nextPending) => {
+						mode = nextMode;
+						pendingStatus = nextPending;
+					},
+					(text) => {
+						void copyToClipboard(text).catch(() => {});
+					},
+					() => readSystemClipboardText(),
+				),
 		);
 	};
 
