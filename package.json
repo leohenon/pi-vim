@@ -1,6 +1,6 @@
 {
   "name": "@leohenon/pi-vim",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Vim-mode editor extension for pi",
   "type": "module",
   "license": "MIT",
