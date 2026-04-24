@@ -30,6 +30,12 @@ type EditorSnapshot = {
 	cursor: Cursor;
 };
 
+type ReplaceSessionEdit = {
+	start: number;
+	inserted: string;
+	original: string;
+};
+
 const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 function clamp(value: number, min: number, max: number): number {
@@ -275,6 +281,7 @@ class VimModeEditor extends CustomEditor {
 	private pendingG = false;
 	private lastFind: LastFind;
 	private readonly redoStack: EditorSnapshot[] = [];
+	private readonly replaceSessionEdits: ReplaceSessionEdit[] = [];
 	private unnamedRegister = "";
 	private unnamedRegisterType: "char" | "line" = "char";
 
@@ -516,6 +523,7 @@ class VimModeEditor extends CustomEditor {
 	private setMode(mode: Mode): void {
 		if (this.mode === mode) return;
 		this.mode = mode;
+		if (mode !== "replace") this.replaceSessionEdits.length = 0;
 		if (mode !== "visual" && mode !== "visual-line") this.visualAnchor = undefined;
 		this.emitStatus();
 		this.tui.requestRender();
@@ -621,6 +629,7 @@ class VimModeEditor extends CustomEditor {
 
 	private enterReplace(): void {
 		this.clearPending();
+		this.replaceSessionEdits.length = 0;
 		this.setMode("replace");
 	}
 
@@ -754,9 +763,37 @@ class VimModeEditor extends CustomEditor {
 		});
 	}
 
+	private deleteBackwardChar(): boolean {
+		const lastReplace = this.replaceSessionEdits[this.replaceSessionEdits.length - 1];
+		if (this.mode === "replace" && lastReplace) {
+			const restored = this.edit((text, offset) => {
+				const end = lastReplace.start + lastReplace.inserted.length;
+				if (offset !== end) return undefined;
+				this.replaceSessionEdits.pop();
+				return {
+					text: replaceRange(text, lastReplace.start, end, lastReplace.original),
+					cursorOffset: lastReplace.start,
+				};
+			});
+			if (restored) return true;
+		}
+		return this.edit((text, offset) => {
+			if (offset <= 0) return undefined;
+			const start = prevGraphemeOffset(text, offset);
+			return {
+				text: replaceRange(text, start, offset),
+				cursorOffset: start,
+			};
+		});
+	}
+
 	private replaceModeInput(data: string): void {
 		if (data === "\r") {
 			super.handleInput(data);
+			return;
+		}
+		if (this.matchesAction(data, "tui.editor.deleteCharBackward") || matchesKey(data, "shift+backspace")) {
+			this.deleteBackwardChar();
 			return;
 		}
 		if (!(data.length === 1 && data.charCodeAt(0) >= 32)) {
@@ -765,11 +802,18 @@ class VimModeEditor extends CustomEditor {
 		}
 		this.edit((text, offset) => {
 			if (offset < text.length && text[offset] !== "\n") {
+				const end = nextGraphemeOffset(text, offset);
+				this.replaceSessionEdits.push({
+					start: offset,
+					inserted: data,
+					original: text.slice(offset, end),
+				});
 				return {
-					text: replaceRange(text, offset, nextGraphemeOffset(text, offset), data),
+					text: replaceRange(text, offset, end, data),
 					cursorOffset: offset + data.length,
 				};
 			}
+			this.replaceSessionEdits.push({ start: offset, inserted: data, original: "" });
 			return {
 				text: replaceRange(text, offset, offset, data),
 				cursorOffset: offset + data.length,
