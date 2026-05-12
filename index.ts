@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { copyToClipboard, CustomEditor, type ExtensionAPI, type ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { Key, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import { copyToClipboard, CustomEditor, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 type Mode = "normal" | "insert" | "replace" | "visual" | "visual-line";
 type Pending = "d" | "c" | "y" | "f" | "F" | "t" | "T" | "r" | undefined;
