@@ -4,6 +4,13 @@
   "description": "Vim-mode editor extension for pi",
   "type": "module",
   "license": "MIT",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi",
+    "vim",
+    "editor"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/leohenon/pi-vim.git"
