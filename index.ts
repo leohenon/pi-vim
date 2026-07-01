@@ -343,10 +343,13 @@ class VimModeEditor extends CustomEditor {
 		this.writeCursorShape("\x1b[2 q");
 	}
 
+	private usesHardwareCursor(): boolean {
+		return this.mode === "normal" || this.mode === "insert" || this.mode === "replace";
+	}
+
 	private updateCursorStyle(): void {
-		const textEntry = this.mode === "insert" || this.mode === "replace";
-		const sequence = this.mode === "replace" ? "\x1b[3 q" : textEntry ? "\x1b[5 q" : "\x1b[2 q";
-		(this.tui as unknown as { setShowHardwareCursor(enabled: boolean): void }).setShowHardwareCursor(textEntry);
+		const sequence = this.mode === "replace" ? "\x1b[3 q" : this.mode === "insert" ? "\x1b[5 q" : "\x1b[2 q";
+		(this.tui as unknown as { setShowHardwareCursor(enabled: boolean): void }).setShowHardwareCursor(this.usesHardwareCursor());
 		this.writeCursorShape(sequence);
 		setTimeout(() => this.writeCursorShape(sequence), 0);
 	}
@@ -1096,11 +1099,11 @@ class VimModeEditor extends CustomEditor {
 		const range = this.getVisualRange() ?? this.flashRange;
 		if (!range) {
 			const lines = super.render(width);
-			if (this.mode !== "insert") return lines;
+			if (!this.usesHardwareCursor()) return lines;
 			return lines.map((line) =>
 				line
-					.replace(/\x1b_pi:c\x07\x1b\[7m \x1b\[0m/g, "\x1b_pi:c\x07")
-					.replace(/\x1b_pi:c\x07\x1b\[7m([\s\S])\x1b\[0m/g, "\x1b_pi:c\x07$1"),
+					.replace(/(\x1b_pi:c\x07)?\x1b\[7m \x1b\[0m/g, "$1")
+					.replace(/(\x1b_pi:c\x07)?\x1b\[7m([\s\S])\x1b\[0m/g, "$1$2"),
 			);
 		}
 
