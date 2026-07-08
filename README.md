@@ -6,10 +6,6 @@ Vim mode for [pi](https://github.com/badlogic/pi-mono).
 
 Normal, insert, visual, and replace modes with motions, text objects, yank/put, and undo/redo.
 
-## Demo
-
-![pi-vim demo](assets/demo.gif)
-
 ## Install
 
 ```bash
@@ -140,7 +136,3 @@ pi-vim/
 
 > [!NOTE]
 > If you run into any bugs, please open an issue.
-
-## License
-
-MIT
