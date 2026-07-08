@@ -1158,7 +1158,7 @@ class VimModeEditor extends CustomEditor {
 			if (!this.usesHardwareCursor()) return lines;
 			return lines.map((line) =>
 				line
-					.replace(/(\x1b_pi:c\x07)?\x1b\[7m \x1b\[0m/g, "$1")
+					.replace(/(\x1b_pi:c\x07)?\x1b\[7m \x1b\[0m/g, "$1 ")
 					.replace(/(\x1b_pi:c\x07)?\x1b\[7m([\s\S])\x1b\[0m/g, "$1$2"),
 			);
 		}
